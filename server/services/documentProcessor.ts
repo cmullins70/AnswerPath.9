@@ -67,7 +67,16 @@ export class DocumentProcessor {
     
     try {
       console.log("Writing file to temporary location...");
-      await fs.writeFile(tempFilePath, file.buffer);
+      console.log("File content length:", file.buffer.length);
+      console.log("File content preview (first 200 bytes):", file.buffer.slice(0, 200));
+      
+      // If content is base64, decode it first
+      const fileBuffer = file.buffer.toString().startsWith('data:') || 
+                        /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)?$/.test(file.buffer.toString()) 
+                        ? Buffer.from(file.buffer.toString(), 'base64')
+                        : file.buffer;
+                        
+      await fs.writeFile(tempFilePath, fileBuffer);
       let docs: Document[] = [];
 
       console.log("Extracting content based on file type...");
@@ -77,6 +86,7 @@ export class DocumentProcessor {
           const pdfLoader = new PDFLoader(tempFilePath);
           docs = await pdfLoader.load();
           console.log(`Extracted ${docs.length} pages from PDF`);
+          console.log("Content preview from first page:", docs[0]?.pageContent?.slice(0, 500));
           break;
 
         case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
@@ -103,9 +113,9 @@ export class DocumentProcessor {
 
       console.log("Splitting document into manageable chunks...");
       const textSplitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 2000,
-        chunkOverlap: 500,
-        separators: ["\n\n", "\n", " ", ""],
+        chunkSize: 1000,
+        chunkOverlap: 200,
+        separators: ["\n\n", "\n", ".", " ", ""],
       });
 
       const splitDocs = await textSplitter.splitDocuments(docs);
@@ -115,6 +125,7 @@ export class DocumentProcessor {
       this.vectorStore = await MemoryVectorStore.fromDocuments(splitDocs, this.embeddings);
       console.log("Successfully created vector store");
 
+      console.log("Original document length:", docs.reduce((acc, doc) => acc + doc.pageContent.length, 0));
       return splitDocs;
     } catch (error) {
       console.error("Error processing document:", error);
@@ -175,12 +186,19 @@ Example format:
     try {
       for (const doc of docs) {
         const preview = doc.pageContent.slice(0, 100).replace(/\n/g, ' ');
-        console.log(`Processing chunk: "${preview}..."`);
+        console.log("Processing chunk:", {
+          length: doc.pageContent.length,
+          preview: preview,
+          metadata: doc.metadata
+        });
         
         try {
           const text = doc.pageContent.trim();
-          if (!text || text.length < 50) { // Increased minimum length
-            console.warn("Skipping chunk - insufficient content length:", text.length);
+          if (!text || text.length < 20) { 
+            console.log("Skipping small chunk:", {
+              length: text.length,
+              preview: text.slice(0, 50)
+            });
             continue;
           }
           
