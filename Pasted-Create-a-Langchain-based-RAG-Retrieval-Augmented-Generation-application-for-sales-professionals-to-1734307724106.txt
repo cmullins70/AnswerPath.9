@@ -1,0 +1,53 @@
+Create a Langchain-based RAG (Retrieval Augmented Generation) application for sales professionals to efficiently process and respond to customer Request for Information (RFI) documents, with the following specifications:
+
+Technical Requirements:
+
+Develop a document processing pipeline that can:
+
+Handle multiple file formats (Excel, Word, PDF)
+Extract and normalize content regardless of formatting inconsistencies
+Implement robust error handling for corrupt or incompatible files
+Store processed documents securely with version control
+Create an intelligent question extraction system that:
+
+Identifies explicit questions (direct queries)
+Recognizes implicit questions (implied information requests)
+Captures action items and requirements
+Tags and categorizes questions for organized processing
+Implement an answer generation system that:
+
+Leverages relevant company knowledge bases
+Maintains consistency with previous responses
+Allows for human review and modification
+Includes confidence scores for generated answers
+Build an export functionality that:
+
+Generates organized Excel/CSV outputs
+Maintains original document structure where appropriate
+Includes metadata and tracking information
+Supports batch processing
+UI/UX Requirements:
+
+Design a clean, intuitive interface with:
+
+Drag-and-drop document upload
+Progress indicators for processing steps
+Clear status notifications
+Preview capabilities for documents and responses
+Implement user-friendly features:
+
+Simple navigation between documents and responses
+In-line editing capabilities
+Search and filter functionality
+Customizable dashboard views
+Include helpful guidance:
+
+Context Library
+document upload
+website scraping
+
+Contextual tooltips
+Step-by-step wizards for complex tasks
+Built-in help documentation
+Error recovery suggestions
+The application should prioritize ease of use for non-technical users while maintaining professional-grade functionality and reliability. Ensure all features support the core workflow of document intake, analysis, response generation, and export.
