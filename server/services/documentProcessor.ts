@@ -101,32 +101,26 @@ export class DocumentProcessor {
       throw new Error("Documents must be processed before extracting questions");
     }
 
-    const questionExtractionPrompt = PromptTemplate.fromTemplate(
-      "You are an AI assistant helping to analyze RFI (Request for Information) documents.\n" +
-      "Analyze the following document content and:\n" +
-      "1. Identify explicit questions (direct queries marked with question marks or numbered questions)\n" +
-      "2. Recognize implicit questions (information requests or requirements that need responses)\n" +
-      "3. For each question:\n" +
-      "   - Extract or formulate the question clearly\n" +
-      "   - Determine if it's explicit or implicit\n" +
-      "   - Note the relevant context from the document\n" +
-      "   - Assign a confidence score (0.1-1.0) based on clarity and context availability\n\n" +
-      "Format your response as a valid JSON array with this structure:\n" +
-      "[\n" +
-      "  {\n" +
-      '    "text": "<question text>",\n' +
-      '    "type": "<explicit or implicit>",\n' +
-      '    "confidence": <score between 0.1 and 1.0>,\n' +
-      '    "answer": "<preliminary answer>",\n' +
-      '    "sourceDocument": "<relevant excerpt>"\n' +
-      "  }\n" +
-      "]\n\n" +
-      "Document content to analyze: {input}"
-    );
+    const questionExtractionPrompt = PromptTemplate.fromTemplate(`
+You are an AI assistant analyzing RFI documents. Extract questions from this content:
+
+{text}
+
+Format your response as a JSON array like this:
+[
+  {
+    "text": "the actual question",
+    "type": "explicit or implicit",
+    "confidence": 0.9,
+    "answer": "preliminary answer",
+    "sourceDocument": "relevant context"
+  }
+]
+`);
 
     const chain = RunnableSequence.from([
       {
-        input: (doc: Document) => doc.pageContent,
+        text: (doc: Document) => doc.pageContent
       },
       questionExtractionPrompt,
       this.openai,
@@ -137,20 +131,34 @@ export class DocumentProcessor {
     
     try {
       for (const doc of docs) {
-        console.log("Processing document chunk:", doc.pageContent.slice(0, 100) + "...");
+        const preview = doc.pageContent.slice(0, 100).replace(/\n/g, ' ');
+        console.log(`Processing chunk: "${preview}..."`);
         
         try {
+          console.log("Invoking LLM chain...");
           const response = await chain.invoke(doc);
-          console.log("Chain response:", response);
+          console.log("Raw LLM response:", response);
           
-          const chunkQuestions = JSON.parse(response) as ProcessedQuestion[];
-          questions.push(...chunkQuestions);
+          let chunkQuestions: ProcessedQuestion[];
+          try {
+            chunkQuestions = JSON.parse(response) as ProcessedQuestion[];
+            console.log(`Successfully parsed ${chunkQuestions.length} questions`);
+          } catch (parseError) {
+            console.error("Failed to parse LLM response as JSON:", parseError);
+            console.error("Raw response was:", response);
+            continue;
+          }
           
-          console.log(`Extracted ${chunkQuestions.length} questions from chunk`);
-        } catch (parseError) {
-          console.error("Failed to process chunk:", parseError);
-          if (parseError instanceof Error) {
-            console.error("Error details:", parseError.message);
+          if (chunkQuestions && Array.isArray(chunkQuestions)) {
+            questions.push(...chunkQuestions);
+            console.log(`Added ${chunkQuestions.length} questions to results`);
+          } else {
+            console.error("Parsed response is not an array:", chunkQuestions);
+          }
+        } catch (chainError) {
+          console.error("Chain execution failed:", chainError);
+          if (chainError instanceof Error) {
+            console.error("Error details:", chainError.message);
           }
           continue;
         }
