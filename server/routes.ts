@@ -153,20 +153,21 @@ export function registerRoutes(app: Express) {
     try {
       console.log("Starting questions export...");
       
-      // Use a simpler query first to verify the basic functionality
-      const query = db.select({
-        text: questions.text,
-        type: questions.type,
-        confidence: questions.confidence,
-        answer: questions.answer,
-        sourceDocument: questions.sourceDocument,
+      // Direct query with explicit error handling
+      const result = await db.select({
+        text: sql`COALESCE(${questions.text}::text, '')`,
+        type: sql`COALESCE(${questions.type}::text, 'unknown')`,
+        confidence: sql`CASE 
+          WHEN ${questions.confidence} IS NULL THEN 0
+          WHEN ${questions.confidence}::text = 'NaN' THEN 0
+          ELSE ${questions.confidence}::float
+        END`,
+        answer: sql`COALESCE(${questions.answer}::text, '')`,
+        sourceDocument: sql`COALESCE(${questions.sourceDocument}::text, '')`,
       })
-      .from(questions)
-      .prepare();
+      .from(questions);
 
-      console.log("Executing simplified query...");
-      const result = await query.execute();
-      console.log("Query execution completed, processing results...");
+      console.log("Query result:", JSON.stringify(result, null, 2));
 
       // Transform the results with proper type handling
       const processedQuestions = result.map(row => ({
