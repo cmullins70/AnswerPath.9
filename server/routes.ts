@@ -153,56 +153,42 @@ export function registerRoutes(app: Express) {
     try {
       console.log("Starting questions export...");
       
-      // First check if we have any questions
-      const count = await db
-        .select({ count: sql`count(*)` })
-        .from(questions)
-        .then(rows => Number(rows[0].count));
-      
-      console.log(`Found ${count} questions to export`);
-      
-      if (count === 0) {
-        return res.status(404).json({ error: "No questions found to export" });
-      }
+      // Use a simpler query first to verify the basic functionality
+      const query = db.select({
+        text: questions.text,
+        type: questions.type,
+        confidence: questions.confidence,
+        answer: questions.answer,
+        sourceDocument: questions.sourceDocument,
+      })
+      .from(questions)
+      .prepare();
 
-      // Fetch questions with explicit type casting and NULL handling
-      const allQuestions = await db.select({
-        text: sql<string>`COALESCE(${questions.text}, '')::text`,
-        type: sql<string>`COALESCE(${questions.type}, 'unknown')::text`,
-        confidence: sql<number>`
-          CASE 
-            WHEN ${questions.confidence} IS NULL OR ${questions.confidence}::text = 'NaN' 
-            THEN 0 
-            ELSE COALESCE(${questions.confidence}::float, 0) 
-          END
-        `,
-        answer: sql<string>`COALESCE(${questions.answer}, '')::text`,
-        sourceDocument: sql<string>`COALESCE(${questions.sourceDocument}, '')::text`,
-      }).from(questions).prepare();
-      
-      console.log(`Prepared SQL query for questions export`);
-      const result = await allQuestions.execute();
-      console.log(`Successfully retrieved ${result.length} questions`);
+      console.log("Executing simplified query...");
+      const result = await query.execute();
+      console.log("Query execution completed, processing results...");
 
-      if (!Array.isArray(allQuestions)) {
-        throw new Error("Database query did not return an array of questions");
-      }
-      
-      // Convert to CSV format with error handling for each field
+      // Transform the results with proper type handling
+      const processedQuestions = result.map(row => ({
+        text: row.text || '',
+        type: row.type || 'unknown',
+        confidence: row.confidence === null || isNaN(row.confidence) ? 0 : row.confidence,
+        answer: row.answer || '',
+        sourceDocument: row.sourceDocument || ''
+      }));
+
+      console.log(`Successfully processed ${processedQuestions.length} questions`);
+
+      // Convert to CSV format with error handling
       const csvRows = [
-        // Header row
         ["Question", "Type", "Confidence", "Answer", "Source Document"],
-        // Data rows
-        ...allQuestions.map((q, index) => {
-          console.log(`Processing row ${index}:`, q);
-          return [
-            String(q.text || '').trim(),
-            String(q.type || 'unknown').trim(),
-            !isNaN(q.confidence) ? `${(Number(q.confidence) * 100).toFixed(1)}%` : '0%',
-            String(q.answer || '').trim(),
-            String(q.sourceDocument || '').trim()
-          ];
-        })
+        ...processedQuestions.map(q => [
+          q.text.trim(),
+          q.type.trim(),
+          `${(q.confidence * 100).toFixed(1)}%`,
+          q.answer.trim(),
+          q.sourceDocument.trim()
+        ])
       ];
       
       console.log(`Formatted ${csvRows.length - 1} data rows`);
