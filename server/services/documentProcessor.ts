@@ -137,29 +137,34 @@ export class DocumentProcessor {
     console.log("Starting question extraction process...");
     console.log(`Processing ${docs.length} document chunks`);
 
-    const questionExtractionPrompt = PromptTemplate.fromTemplate(
-      "You are an AI assistant analyzing RFI documents. Below is the content to analyze:\n\n" +
-      "Content:\n{content}\n\n" +
-      "Instructions:\n" +
-      "1. Extract explicit questions (direct queries marked with ? or numbered)\n" +
-      "2. Identify implicit questions (requirements needing responses)\n" +
-      "3. For each question found:\n" +
-      "   - Clearly state the question\n" +
-      "   - Note if it's explicit or implicit\n" +
-      "   - Include relevant context\n" +
-      "   - Provide a confidence score\n\n" +
-      "Format your response as a JSON array with these fields:\n" +
-      "[\n" +
-      "  {\n" +
-      '    "text": "<the question text>",\n' +
-      '    "type": "explicit",\n' +
-      '    "confidence": 0.9,\n' +
-      '    "answer": "<answer text>",\n' +
-      '    "sourceDocument": "<relevant context>"\n' +
-      "  }\n" +
-      "]\n\n" +
-      "Only respond with valid JSON, no additional text."
-    );
+    const template = `You are an AI assistant analyzing RFI documents. Below is the content to analyze:
+
+Content:
+{text}
+
+Instructions:
+1. Extract explicit questions (direct queries marked with ? or numbered)
+2. Identify implicit questions (requirements needing responses)
+3. For each question found:
+   - Clearly state the question
+   - Note if it's explicit or implicit
+   - Include relevant context
+   - Provide a confidence score
+
+Format your response as a JSON array with these fields:
+[
+  {
+    "text": "What is the expected response time?",
+    "type": "explicit",
+    "confidence": 0.9,
+    "answer": "Based on the requirements...",
+    "sourceDocument": "Section 3.2: Response Requirements"
+  }
+]
+
+Only respond with valid JSON, no additional text.`;
+
+    const questionExtractionPrompt = PromptTemplate.fromTemplate(template);
 
     try {
       const questions: ProcessedQuestion[] = [];
@@ -170,12 +175,13 @@ export class DocumentProcessor {
         
         try {
           // Format the content and invoke the LLM
-          const content = doc.pageContent.trim();
-          console.log("Calling OpenAI with content length:", content.length);
+          const text = doc.pageContent.trim();
+          console.log("Calling OpenAI with content length:", text.length);
           
-          const response = await this.openai.invoke(
-            await questionExtractionPrompt.format({ content })
-          );
+          const formattedPrompt = await questionExtractionPrompt.format({ text });
+          console.log("Formatted prompt:", formattedPrompt);
+          
+          const response = await this.openai.invoke(formattedPrompt);
           
           console.log("OpenAI Response:", response);
           
