@@ -137,6 +137,68 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // Export endpoint needs to come before the :documentId route to prevent conflicts
+  app.get("/api/questions/export", async (_req, res) => {
+    console.log("Starting CSV export of all questions");
+    try {
+      const allQuestions = await db.select({
+        text: questions.text,
+        type: questions.type,
+        confidence: questions.confidence,
+        answer: questions.answer,
+        sourceDocument: questions.sourceDocument,
+      }).from(questions);
+
+      if (allQuestions.length === 0) {
+        console.log("No questions found to export");
+        return res.status(404).json({ error: "No questions found to export" });
+      }
+
+      console.log(`Found ${allQuestions.length} questions to export`);
+      let csvContent = 'Question,Type,Confidence,Answer,Source Document\n';
+
+      for (const q of allQuestions) {
+        try {
+          const confidence = typeof q.confidence === 'number' && !isNaN(q.confidence) 
+            ? (q.confidence * 100).toFixed(1) 
+            : '0.0';
+
+          const row = [
+            q.text || '',
+            q.type || 'unknown',
+            `${confidence}%`,
+            q.answer || '',
+            q.sourceDocument || ''
+          ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
+
+          csvContent += row + '\n';
+        } catch (err) {
+          console.error('Error processing row:', err, q);
+          continue;
+        }
+      }
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="questions.csv"');
+      res.send(csvContent);
+
+      console.log("Export completed successfully");
+    } catch (error) {
+      console.error("Export failed:", error);
+      if (error instanceof Error) {
+        console.error("Error details:", {
+          message: error.message,
+          name: error.name,
+          stack: error.stack
+        });
+      }
+      res.status(500).json({ 
+        error: "Failed to export questions",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   app.get("/api/questions/:documentId", async (req, res) => {
     try {
       console.log(`Fetching questions for document ID: ${req.params.documentId}`);
@@ -177,72 +239,6 @@ export function registerRoutes(app: Express) {
       }
       res.status(500).json({ 
         error: "Failed to fetch document questions",
-        details: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
-
-  app.get("/api/questions/export", async (_req, res) => {
-    try {
-      console.log("Starting questions export...");
-
-      // Use a simpler query without type casting
-      const allQuestions = await db.select({
-        text: questions.text,
-        type: questions.type,
-        confidence: questions.confidence,
-        answer: questions.answer,
-        sourceDocument: questions.sourceDocument,
-      }).from(questions);
-
-      console.log(`Retrieved ${allQuestions.length} questions from database`);
-
-      if (allQuestions.length === 0) {
-        return res.status(404).json({ error: "No questions found to export" });
-      }
-
-      // Generate CSV content with error handling for each row
-      let csvContent = 'Question,Type,Confidence,Answer,Source Document\n';
-
-      for (const q of allQuestions) {
-        try {
-          const confidence = typeof q.confidence === 'number' && !isNaN(q.confidence) 
-            ? (q.confidence * 100).toFixed(1) 
-            : '0.0';
-
-          const row = [
-            q.text || '',
-            q.type || 'unknown',
-            `${confidence}%`,
-            q.answer || '',
-            q.sourceDocument || ''
-          ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
-
-          csvContent += row + '\n';
-        } catch (err) {
-          console.error('Error processing row:', err, q);
-          // Skip problematic rows instead of failing the entire export
-          continue;
-        }
-      }
-
-      // Send response
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename="questions.csv"');
-      res.send(csvContent);
-
-      console.log("Export completed successfully");
-    } catch (error) {
-      console.error("Export failed:", error);
-      if (error instanceof Error) {
-        console.error("Error details:", {
-          message: error.message,
-          name: error.name,
-          stack: error.stack
-        });
-      }
-      res.status(500).json({ 
-        error: "Failed to export questions",
         details: error instanceof Error ? error.message : "Unknown error"
       });
     }
