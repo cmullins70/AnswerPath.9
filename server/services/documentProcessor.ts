@@ -125,6 +125,9 @@ export class DocumentProcessor {
     );
 
     const chain = RunnableSequence.from([
+      {
+        input: (doc: Document) => doc.pageContent,
+      },
       questionExtractionPrompt,
       this.openai,
       new StringOutputParser(),
@@ -133,23 +136,36 @@ export class DocumentProcessor {
     const questions: ProcessedQuestion[] = [];
     
     try {
-      for (let i = 0; i < docs.length; i++) {
-        const doc = docs[i];
-        console.log(`Processing document chunk ${i + 1}/${docs.length}`);
+      for (const doc of docs) {
+        console.log("Processing document chunk:", doc.pageContent.slice(0, 100) + "...");
         
-        const response = await chain.invoke(doc.pageContent);
         try {
+          const response = await chain.invoke(doc);
+          console.log("Chain response:", response);
+          
           const chunkQuestions = JSON.parse(response) as ProcessedQuestion[];
           questions.push(...chunkQuestions);
+          
+          console.log(`Extracted ${chunkQuestions.length} questions from chunk`);
         } catch (parseError) {
-          console.error("Failed to parse questions from chunk:", parseError);
+          console.error("Failed to process chunk:", parseError);
+          if (parseError instanceof Error) {
+            console.error("Error details:", parseError.message);
+          }
           continue;
         }
+      }
+
+      if (questions.length === 0) {
+        console.warn("No questions were extracted from any chunks");
       }
 
       return questions;
     } catch (error) {
       console.error("Failed to process questions:", error);
+      if (error instanceof Error) {
+        console.error("Error details:", error.message, error.stack);
+      }
       throw error;
     }
   }

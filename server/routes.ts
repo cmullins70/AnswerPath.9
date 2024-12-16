@@ -118,6 +118,8 @@ export function registerRoutes(app: Express) {
 
 async function processDocument(documentId: number, file: Express.Multer.File) {
   try {
+    console.log(`Starting processing for document ${documentId}`);
+    
     // Update status to extraction
     processingStatus.set(documentId, {
       currentStep: "extraction",
@@ -126,7 +128,9 @@ async function processDocument(documentId: number, file: Express.Multer.File) {
     });
 
     // Process the document
+    console.log("Extracting document content...");
     const docs = await processor.processDocument(file);
+    console.log(`Extracted ${docs.length} document chunks`);
 
     // Update status to questions
     processingStatus.set(documentId, {
@@ -136,7 +140,9 @@ async function processDocument(documentId: number, file: Express.Multer.File) {
     });
 
     // Extract questions
+    console.log("Extracting questions from document...");
     const extractedQuestions = await processor.extractQuestions(docs);
+    console.log(`Extracted ${extractedQuestions.length} questions`);
     
     // Update status to analysis
     processingStatus.set(documentId, {
@@ -146,6 +152,7 @@ async function processDocument(documentId: number, file: Express.Multer.File) {
     });
 
     // Save questions to database
+    console.log("Saving questions to database...");
     await Promise.all(
       extractedQuestions.map(async (q) => {
         return db.insert(questions).values({
@@ -172,6 +179,8 @@ async function processDocument(documentId: number, file: Express.Multer.File) {
       completedSteps: ["extraction", "questions", "analysis", "generation"],
       progress: 100
     });
+    
+    console.log(`Successfully completed processing document ${documentId}`);
   } catch (error) {
     console.error(`Failed to process document ${documentId}:`, error);
     
