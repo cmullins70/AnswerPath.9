@@ -91,23 +91,39 @@ export function registerRoutes(app: Express) {
   app.get("/api/processing/status", async (req, res) => {
     const documentId = parseInt(req.query.documentId as string);
     if (isNaN(documentId)) {
+      console.log("No document ID provided");
       return res.json({
-        currentStep: "queued",
+        currentStep: "preparation",
         completedSteps: [],
         progress: 0
       });
     }
     
+    console.log(`Fetching processing status for document ${documentId}`);
     const doc = await db.select().from(documents).where(eq(documents.id, documentId)).limit(1);
     if (!doc.length) {
+      console.log(`Document ${documentId} not found`);
       return res.status(404).json({ error: "Document not found" });
     }
 
-    const status = processingStatus.get(documentId) || {
-      currentStep: doc[0].status === "error" ? "error" : "queued",
-      completedSteps: [],
-      progress: doc[0].status === "error" ? 0 : doc[0].status === "processed" ? 100 : 0
-    };
+    const status = processingStatus.get(documentId);
+    console.log(`Current processing status for document ${documentId}:`, status);
+    
+    if (!status) {
+      const defaultStatus = {
+        currentStep: doc[0].status === "error" ? "error" : 
+                    doc[0].status === "processed" ? "complete" : "preparation",
+        completedSteps: doc[0].status === "processed" ? 
+                       ["preparation", "extraction", "questions", "analysis"] : [],
+        progress: doc[0].status === "error" ? 0 : 
+                 doc[0].status === "processed" ? 100 : 25,
+        error: doc[0].status === "error" ? 
+               (doc[0].metadata as any)?.error || "Unknown error occurred" : undefined
+      };
+      console.log(`Using default status:`, defaultStatus);
+      return res.json(defaultStatus);
+    }
+
     res.json(status);
   });
 
@@ -141,100 +157,117 @@ async function processDocument(documentId: number, file: Express.Multer.File) {
   try {
     console.log(`Starting processing for document ${documentId}`);
     
-    // Update initial status
+    // Initialize processing status
     processingStatus.set(documentId, {
       currentStep: "preparation",
       completedSteps: [],
       progress: 0
     });
 
-    // Process the document
-    console.log("Extracting document content...");
-    processingStatus.set(documentId, {
-      currentStep: "extraction",
-      completedSteps: ["preparation"],
-      progress: 25
-    });
-    
-    const docs = await processor.processDocument(file);
-    console.log(`Extracted ${docs.length} document chunks`);
+    try {
+      // Initial preparation step
+      console.log("Starting document preparation...");
+      processingStatus.set(documentId, {
+        currentStep: "preparation",
+        completedSteps: [],
+        progress: 0
+      });
+      
+      // Extract content
+      console.log("Extracting document content...");
+      processingStatus.set(documentId, {
+        currentStep: "extraction",
+        completedSteps: ["preparation"],
+        progress: 25
+      });
+      
+      const docs = await processor.processDocument(file);
+      console.log(`Extracted ${docs.length} document chunks`);
 
-    // Update status for question extraction
-    processingStatus.set(documentId, {
-      currentStep: "questions",
-      completedSteps: ["preparation", "extraction"],
-      progress: 50
-    });
+      // Update status for question extraction
+      console.log("Starting question extraction...");
+      processingStatus.set(documentId, {
+        currentStep: "questions",
+        completedSteps: ["preparation", "extraction"],
+        progress: 50
+      });
 
-    // Extract questions
-    console.log("Extracting questions from document...");
-    const extractedQuestions = await processor.extractQuestions(docs);
-    console.log(`Extracted ${extractedQuestions.length} questions`);
-    
-    // Update status to analysis
-    processingStatus.set(documentId, {
-      currentStep: "analysis",
-      completedSteps: ["extraction", "questions"],
-      progress: 75
-    });
+      // Extract questions
+      const extractedQuestions = await processor.extractQuestions(docs);
+      console.log(`Extracted ${extractedQuestions.length} questions`);
+      
+      // Update status to analysis
+      console.log("Starting analysis...");
+      processingStatus.set(documentId, {
+        currentStep: "analysis",
+        completedSteps: ["preparation", "extraction", "questions"],
+        progress: 75
+      });
 
-    // Save questions to database
-    console.log("Saving questions to database...");
-    await Promise.all(
-      extractedQuestions.map(async (q) => {
-        return db.insert(questions).values({
-          documentId,
-          text: q.text,
-          answer: q.answer,
-          confidence: q.confidence,
-          sourceDocument: q.sourceDocument,
-          type: q.type,
-          metadata: {}
-        });
-      })
-    );
+      // Save questions to database
+      console.log("Saving questions to database...");
+      await Promise.all(
+        extractedQuestions.map(async (q) => {
+          return db.insert(questions).values({
+            documentId,
+            text: q.text,
+            answer: q.answer,
+            confidence: q.confidence,
+            sourceDocument: q.sourceDocument,
+            type: q.type,
+            metadata: {}
+          });
+        })
+      );
 
-    // Update document status
-    await db
-      .update(documents)
-      .set({ status: "processed" })
-      .where(eq(documents.id, documentId));
+      // Update document status
+      await db
+        .update(documents)
+        .set({ status: "processed" })
+        .where(eq(documents.id, documentId));
 
-    // Update final status
-    processingStatus.set(documentId, {
-      currentStep: "complete",
-      completedSteps: ["extraction", "questions", "analysis", "generation"],
-      progress: 100
-    });
-    
-    console.log(`Successfully completed processing document ${documentId}`);
+      // Update final status
+      processingStatus.set(documentId, {
+        currentStep: "complete",
+        completedSteps: ["preparation", "extraction", "questions", "analysis"],
+        progress: 100
+      });
+      
+      console.log(`Successfully completed processing document ${documentId}`);
+    } catch (error) {
+      console.error(`Failed to process document ${documentId}:`, error);
+      
+      let errorMessage = "An unexpected error occurred";
+      if (error instanceof Error) {
+        if (error.message.includes("API key")) {
+          errorMessage = "OpenAI API authentication failed. Please check the API key configuration.";
+        } else if (error.message.includes("quota")) {
+          errorMessage = "OpenAI API quota exceeded. Please check your usage limits.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      processingStatus.set(documentId, {
+        currentStep: "error",
+        completedSteps: [],
+        progress: 0,
+        error: errorMessage
+      });
+
+      await db
+        .update(documents)
+        .set({ 
+          status: "error", 
+          metadata: { error: errorMessage } 
+        })
+        .where(eq(documents.id, documentId));
+    }
   } catch (error) {
     console.error(`Failed to process document ${documentId}:`, error);
-    
-    let errorMessage = "An unexpected error occurred";
     if (error instanceof Error) {
-      if (error.message.includes("API key")) {
-        errorMessage = "OpenAI API authentication failed. Please check the API key configuration.";
-      } else if (error.message.includes("quota")) {
-        errorMessage = "OpenAI API quota exceeded. Please check your usage limits.";
-      } else {
-        errorMessage = error.message;
-      }
+      console.error("Error details:", error.message, error.stack);
     }
-
-    processingStatus.set(documentId, {
-      currentStep: "error",
-      completedSteps: [],
-      progress: 0,
-      error: errorMessage
-    });
-
-    await db
-      .update(documents)
-      .set({ 
-        status: "error", 
-        metadata: { error: errorMessage } 
-      })
-      .where(eq(documents.id, documentId));
+    throw error;
   }
 }
