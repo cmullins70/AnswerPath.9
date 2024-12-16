@@ -206,9 +206,11 @@ async function processDocument(documentId: number, file: Express.Multer.File) {
 
       // Save questions to database
       console.log("Saving questions to database...");
-      await Promise.all(
+      console.log("Saving questions to database:", extractedQuestions);
+      const savedQuestions = await Promise.all(
         extractedQuestions.map(async (q) => {
-          return db.insert(questions).values({
+          console.log("Inserting question:", q);
+          const [inserted] = await db.insert(questions).values({
             documentId,
             text: q.text,
             answer: q.answer,
@@ -216,9 +218,12 @@ async function processDocument(documentId: number, file: Express.Multer.File) {
             sourceDocument: q.sourceDocument,
             type: q.type,
             metadata: {}
-          });
+          }).returning();
+          console.log("Successfully inserted question:", inserted);
+          return inserted;
         })
       );
+      console.log("All questions saved to database:", savedQuestions);
 
       // Update document status
       await db

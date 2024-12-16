@@ -1,14 +1,10 @@
-import { Document } from "@langchain/core/documents";
-import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-import { DocxLoader } from "@langchain/community/document_loaders/fs/docx";
-import { CSVLoader } from "@langchain/community/document_loaders/fs/csv";
+import { Document } from "langchain/document";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
-import { OpenAIEmbeddings } from "@langchain/openai";
-import { MemoryVectorStore } from "langchain/vectorstores/memory";
+import { OpenAIEmbeddings } from "langchain/embeddings/openai";
 import { ChatOpenAI } from "@langchain/openai";
-import { RunnableSequence } from "@langchain/core/runnables";
-import { StringOutputParser } from "@langchain/core/output_parsers";
-import { PromptTemplate } from "@langchain/core/prompts";
+import { PromptTemplate } from "langchain/prompts";
+import { MemoryVectorStore } from "langchain/vectorstores/memory";
+import * as pdfParse from 'pdf-parse';
 import * as mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import * as fs from "fs/promises";
@@ -29,115 +25,72 @@ export class DocumentProcessor {
 
   constructor() {
     if (!process.env.OPENAI_API_KEY) {
-      throw new Error("OpenAI API key is not configured. Please provide a valid API key.");
+      throw new Error("OpenAI API key is not configured");
     }
 
-    try {
-      console.log("Initializing OpenAI services...");
-      
-      this.openai = new ChatOpenAI({
-        modelName: "gpt-3.5-turbo",
-        temperature: 0,
-        maxTokens: 2000,
-        openAIApiKey: process.env.OPENAI_API_KEY,
-      });
+    this.openai = new ChatOpenAI({
+      modelName: "gpt-3.5-turbo",
+      temperature: 0,
+      maxTokens: 2000,
+    });
 
-      this.embeddings = new OpenAIEmbeddings({
-        modelName: "text-embedding-ada-002",
-        stripNewLines: true,
-        openAIApiKey: process.env.OPENAI_API_KEY,
-      });
-      
-      console.log("Successfully initialized OpenAI services");
-    } catch (error) {
-      console.error("Failed to initialize OpenAI services:", error);
-      if (error instanceof Error) {
-        console.error("Error details:", error.message, error.stack);
-      }
-      throw new Error("Failed to initialize AI services. Please check your API key configuration.");
-    }
+    this.embeddings = new OpenAIEmbeddings();
   }
 
   async processDocument(file: Express.Multer.File): Promise<Document[]> {
-    console.log(`Starting to process document: ${file.originalname} (${file.mimetype})`);
+    console.log(`Processing document: ${file.originalname} (${file.mimetype})`);
     
     const tempDir = path.join(process.cwd(), "temp");
     await fs.mkdir(tempDir, { recursive: true });
     const tempFilePath = path.join(tempDir, file.originalname);
     
     try {
-      console.log("Writing file to temporary location...");
-      console.log("File content length:", file.buffer.length);
-      console.log("File content preview (first 200 bytes):", file.buffer.slice(0, 200));
-      
-      // If content is base64, decode it first
-      const fileBuffer = file.buffer.toString().startsWith('data:') || 
-                        /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)?$/.test(file.buffer.toString()) 
-                        ? Buffer.from(file.buffer.toString(), 'base64')
-                        : file.buffer;
-                        
-      await fs.writeFile(tempFilePath, fileBuffer);
+      await fs.writeFile(tempFilePath, file.buffer);
       let docs: Document[] = [];
 
-      console.log("Extracting content based on file type...");
       switch (file.mimetype) {
-        case "application/pdf":
-          console.log("Processing PDF document...");
-          const pdfLoader = new PDFLoader(tempFilePath);
-          docs = await pdfLoader.load();
-          console.log(`Extracted ${docs.length} pages from PDF`);
-          console.log("Content preview from first page:", docs[0]?.pageContent?.slice(0, 500));
+        case "application/pdf": {
+          const dataBuffer = await fs.readFile(tempFilePath);
+          const pdfData = await pdfParse(dataBuffer);
+          docs = [new Document({ pageContent: pdfData.text })];
           break;
-
+        }
         case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        case "application/msword":
-          console.log("Processing Word document...");
-          const docxResult = await mammoth.extractRawText({ path: tempFilePath });
-          docs = [new Document({ pageContent: docxResult.value })];
-          console.log("Successfully extracted Word document content");
+        case "application/msword": {
+          const result = await mammoth.extractRawText({ path: tempFilePath });
+          docs = [new Document({ pageContent: result.value })];
           break;
-
+        }
         case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-        case "application/vnd.ms-excel":
-          console.log("Processing Excel document...");
+        case "application/vnd.ms-excel": {
           const workbook = XLSX.read(await fs.readFile(tempFilePath));
           const csvContent = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
-          const loader = new CSVLoader(new Blob([csvContent]));
-          docs = await loader.load();
-          console.log("Successfully converted Excel to text content");
+          docs = [new Document({ pageContent: csvContent })];
           break;
-
+        }
         default:
           throw new Error(`Unsupported file type: ${file.mimetype}`);
       }
 
-      console.log("Splitting document into manageable chunks...");
       const textSplitter = new RecursiveCharacterTextSplitter({
         chunkSize: 1000,
         chunkOverlap: 200,
-        separators: ["\n\n", "\n", ".", " ", ""],
       });
 
       const splitDocs = await textSplitter.splitDocuments(docs);
-      console.log(`Split into ${splitDocs.length} chunks`);
+      console.log(`Split document into ${splitDocs.length} chunks`);
+      
+      this.vectorStore = await MemoryVectorStore.fromDocuments(
+        splitDocs,
+        this.embeddings
+      );
 
-      console.log("Creating vector store from documents...");
-      this.vectorStore = await MemoryVectorStore.fromDocuments(splitDocs, this.embeddings);
-      console.log("Successfully created vector store");
-
-      console.log("Original document length:", docs.reduce((acc, doc) => acc + doc.pageContent.length, 0));
       return splitDocs;
     } catch (error) {
       console.error("Error processing document:", error);
-      if (error instanceof Error) {
-        console.error("Error details:", error.message, error.stack);
-      }
       throw error;
     } finally {
-      console.log("Cleaning up temporary files...");
-      await fs.unlink(tempFilePath).catch((error) => {
-        console.error("Error deleting temporary file:", error);
-      });
+      await fs.unlink(tempFilePath).catch(console.error);
     }
   }
 
@@ -146,127 +99,68 @@ export class DocumentProcessor {
       throw new Error("Documents must be processed before extracting questions");
     }
 
-    console.log("Starting question extraction process...");
-    console.log(`Processing ${docs.length} document chunks`);
+    const template = `You are an expert at analyzing RFI documents. Your task is to extract questions and requirements from the following text:
 
-    const template = `You are an expert at analyzing RFI (Request for Information) documents.
-Analyze the following text carefully and extract any questions or requirements that need responses: {text}
+{text}
 
-Instructions:
-1. Look for explicit questions (ending with ? or clearly asking for information)
-2. Identify implicit questions (statements that require a response, like "Vendor must provide..." or "Describe your approach to...")
-3. For each question or requirement:
-   - Capture the exact text
-   - Determine if it's explicit (has a question mark or clear question words) or implicit (requirements/statements needing response)
-   - Generate a draft answer based on best practices
-   - Include the relevant section or context
+Carefully identify:
+1. Explicit questions (marked with ? or using question words like what, how, when)
+2. Implicit requirements (statements that need responses like "Vendor must..." or "Describe your...")
 
-Return ONLY a JSON array with this format (no other text):
+Return a JSON array with exactly this format (no other text):
 [{
-  "text": "The complete question or requirement text",
-  "type": "explicit or implicit",
-  "confidence": "number between 0-1 indicating certainty",
-  "answer": "Draft answer addressing the question/requirement",
-  "sourceDocument": "Section or context where this was found"
-}]
-
-Example format:
-[{
-  "text": "What is your approach to data security?",
-  "type": "explicit",
-  "confidence": 0.95,
-  "answer": "Our approach to data security involves multiple layers of protection...",
-  "sourceDocument": "Section 3.2 - Security Requirements"
+  "text": "the complete question or requirement text",
+  "type": "explicit" | "implicit",
+  "confidence": number between 0-1,
+  "answer": "detailed draft answer",
+  "sourceDocument": "relevant context where found"
 }]`;
 
-    const questionExtractionPrompt = PromptTemplate.fromTemplate(template);
-
+    const prompt = PromptTemplate.fromTemplate(template);
     const questions: ProcessedQuestion[] = [];
-    
-    try {
-      for (const doc of docs) {
-        const preview = doc.pageContent.slice(0, 100).replace(/\n/g, ' ');
-        console.log("Processing chunk:", {
-          length: doc.pageContent.length,
-          preview: preview,
-          metadata: doc.metadata
-        });
+
+    for (const doc of docs) {
+      const text = doc.pageContent.trim();
+      if (!text || text.length < 20) continue;
+
+      try {
+        const formattedPrompt = await prompt.format({ text });
+        const response = await this.openai.invoke(formattedPrompt);
         
-        try {
-          const text = doc.pageContent.trim();
-          if (!text || text.length < 20) { 
-            console.log("Skipping small chunk:", {
-              length: text.length,
-              preview: text.slice(0, 50)
-            });
-            continue;
-          }
-          
-          console.log("Processing chunk of length:", text.length);
-          console.log("Content preview:", text.slice(0, 100));
-          
-          const formattedPrompt = await questionExtractionPrompt.format({ text });
-          console.log("Sending prompt to OpenAI:", formattedPrompt);
-          
-          const response = await this.openai.invoke(formattedPrompt);
-          console.log("OpenAI Raw Response:", response);
-          
-          if (!response.content) {
-            console.error("OpenAI response is missing content");
-            continue;
-          }
-          
-          const responseText = response.content as string;
-          console.log("Extracted response text:", responseText);
-          
-          let chunkQuestions: ProcessedQuestion[];
-          try {
-            chunkQuestions = JSON.parse(responseText) as ProcessedQuestion[];
-            
-            if (!Array.isArray(chunkQuestions)) {
-              console.error("Parsed response is not an array:", chunkQuestions);
-              continue;
-            }
-            
-            const validQuestions = chunkQuestions.filter(q => {
-              return (
-                typeof q.text === 'string' && q.text.length > 0 &&
-                (q.type === 'explicit' || q.type === 'implicit') &&
-                typeof q.confidence === 'number' &&
-                q.confidence >= 0 && q.confidence <= 1 &&
-                typeof q.answer === 'string' &&
-                typeof q.sourceDocument === 'string'
-              );
-            });
-            
-            questions.push(...validQuestions);
-            console.log(`Added ${validQuestions.length} valid questions from chunk`);
-            
-          } catch (parseError) {
-            console.error("Failed to parse OpenAI response as JSON:", parseError);
-            console.error("Raw response was:", responseText);
-            continue;
-          }
-        } catch (chunkError) {
-          console.error("Error processing chunk:", chunkError);
-          if (chunkError instanceof Error) {
-            console.error("Error details:", chunkError.message, chunkError.stack);
-          }
+        if (!response.content) {
+          console.log("Empty response from OpenAI");
           continue;
         }
-      }
 
-      if (questions.length === 0) {
-        console.warn("No questions were extracted from any chunks");
-      }
+        try {
+          console.log("Raw OpenAI response:", response.content);
+          const parsed = JSON.parse(response.content) as ProcessedQuestion[];
+          
+          if (!Array.isArray(parsed)) {
+            console.log("Response is not an array:", parsed);
+            continue;
+          }
 
-      return questions;
-    } catch (error) {
-      console.error("Failed to process questions:", error);
-      if (error instanceof Error) {
-        console.error("Error details:", error.message, error.stack);
+          const valid = parsed.filter(q => 
+            typeof q.text === 'string' && q.text.length > 0 &&
+            (q.type === 'explicit' || q.type === 'implicit') &&
+            typeof q.confidence === 'number' &&
+            q.confidence >= 0 && q.confidence <= 1 &&
+            typeof q.answer === 'string' &&
+            typeof q.sourceDocument === 'string'
+          );
+
+          console.log(`Extracted ${valid.length} valid questions from chunk`);
+          questions.push(...valid);
+        } catch (e) {
+          console.error("Failed to parse OpenAI response:", e);
+        }
+      } catch (e) {
+        console.error("Failed to process document chunk:", e);
       }
-      throw error;
     }
+
+    console.log(`Total questions extracted: ${questions.length}`);
+    return questions;
   }
 }
