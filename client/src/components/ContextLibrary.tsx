@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Library, Trash2, Globe, File } from "lucide-react";
+import { Plus, Library, Trash2, Globe, File, Upload } from "lucide-react";
+import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -41,8 +43,59 @@ export function ContextLibrary() {
   const [content, setContent] = useState("");
   const [type, setType] = useState<ContextType["type"]>("knowledge_base");
   const [url, setUrl] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    if (acceptedFiles.length === 0) return;
+    
+    const file = acceptedFiles[0];
+    const formData = new FormData();
+    formData.append("file", file);
+    
+    try {
+      setUploadProgress(10);
+      const response = await fetch("/api/contexts/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error || "Failed to upload document");
+      }
+
+      const result = await response.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/contexts"] });
+      setIsOpen(false);
+      setUploadProgress(0);
+      toast({
+        title: "Success",
+        description: "Document uploaded successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to upload document",
+        variant: "destructive",
+      });
+      setUploadProgress(0);
+    }
+  }, [queryClient, toast, setIsOpen]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/pdf': ['.pdf'],
+      'application/msword': ['.doc'],
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+      'application/vnd.ms-excel': ['.xls'],
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
+    },
+    maxFiles: 1,
+    multiple: false
+  });
 
   const { data: contexts, isLoading } = useQuery<ContextType[]>({
     queryKey: ["/api/contexts"],
@@ -221,6 +274,32 @@ export function ContextLibrary() {
                     placeholder="https://example.com"
                     type="url"
                   />
+                </div>
+              ) : type === "document" ? (
+                <div className="space-y-4">
+                  <div
+                    {...getRootProps()}
+                    className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+                      isDragActive ? "border-primary bg-primary/5" : "border-border"
+                    }`}
+                  >
+                    <input {...getInputProps()} />
+                    <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Drag & drop a document here, or click to select
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Supported formats: PDF, DOC, DOCX, XLS, XLSX
+                    </p>
+                  </div>
+                  {uploadProgress > 0 && (
+                    <div className="space-y-2">
+                      <Progress value={uploadProgress} />
+                      <p className="text-sm text-muted-foreground text-center">
+                        Uploading... {uploadProgress}%
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-2">

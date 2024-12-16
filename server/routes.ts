@@ -191,6 +191,51 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  app.post("/api/contexts/upload", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const file = req.file;
+      console.log("Processing uploaded file:", file.originalname);
+
+      // Extract text content from the file using DocumentProcessor
+      const docs = await processor.processDocument(file);
+      const content = docs.map(doc => doc.pageContent).join("\n\n");
+
+      console.log("Creating context entry for document");
+      const [context] = await db.insert(contexts).values({
+        title: file.originalname,
+        content,
+        type: "document",
+        metadata: {
+          originalName: file.originalname,
+          mimeType: file.mimetype,
+          size: file.size
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+
+      console.log("Successfully created context:", context);
+      res.json(context);
+    } catch (error) {
+      console.error("Failed to process uploaded document:", error);
+      if (error instanceof Error) {
+        console.error("Error details:", {
+          message: error.message,
+          name: error.name,
+          stack: error.stack
+        });
+      }
+      res.status(500).json({ 
+        error: "Failed to process document",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   app.post("/api/contexts/scrape", async (req, res) => {
     try {
       console.log("Received scrape request:", req.body);
