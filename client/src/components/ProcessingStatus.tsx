@@ -12,8 +12,15 @@ import {
 } from "@/components/ui/tooltip";
 
 export function ProcessingStatus() {
+  const { data: documents } = useQuery<DocumentType[]>({
+    queryKey: ["/api/documents"],
+  });
+
+  const processingDocuments = documents?.filter(doc => doc.status === 'processing') ?? [];
+  
   const { data: status } = useQuery<ProcessingStatusType>({
-    queryKey: ["/api/processing/status"],
+    queryKey: ["/api/processing/status", processingDocuments[0]?.id],
+    enabled: processingDocuments.length > 0,
   });
 
   const steps = [
@@ -98,6 +105,11 @@ export function ProcessingStatus() {
                   {isActive && (
                     <span className="ml-auto text-sm text-blue-500 font-medium">
                       In Progress...
+                    </span>
+                  )}
+                  {status?.currentStep === "error" && step.id === "extraction" && (
+                    <span className="ml-auto text-sm text-destructive font-medium">
+                      Processing Failed
                     </span>
                   )}
                 </div>
