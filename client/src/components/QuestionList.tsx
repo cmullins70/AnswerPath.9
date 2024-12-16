@@ -50,9 +50,14 @@ export function QuestionList() {
         <span className="text-sm text-muted-foreground">
           {questions.length} question{questions.length !== 1 ? 's' : ''} found
         </span>
-        <Button>
+        <Button
+          onClick={() => {
+            window.location.href = "/api/questions/export";
+          }}
+          disabled={!questions.length}
+        >
           <Download className="mr-2 h-4 w-4" />
-          Export Responses
+          Export to CSV
         </Button>
       </div>
 
@@ -61,19 +66,37 @@ export function QuestionList() {
           <AccordionItem key={question.id} value={question.id}>
             <AccordionTrigger className="hover:no-underline">
               <div className="flex items-center gap-4 text-left">
-                <span>{question.text}</span>
-                <Badge
-                  variant={
-                    question.confidence > 0.8
-                      ? "default"
-                      : question.confidence > 0.5
-                      ? "secondary"
-                      : "destructive"
-                  }
-                >
-                  {Math.round(question.confidence * 100)}% confident
-                </Badge>
-                <Badge variant="outline">{question.type}</Badge>
+                <div className="flex-grow">
+                  <span className="font-medium">{question.text}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <Badge
+                    variant={
+                      question.confidence > 0.8
+                        ? "default"
+                        : question.confidence > 0.5
+                        ? "secondary"
+                        : "destructive"
+                    }
+                    className="min-w-[100px] flex justify-center"
+                  >
+                    <div className="relative w-full">
+                      <div 
+                        className="absolute inset-0 bg-primary/20 rounded"
+                        style={{ width: `${Math.round(question.confidence * 100)}%` }}
+                      />
+                      <span className="relative z-10">
+                        {Math.round(question.confidence * 100)}% confident
+                      </span>
+                    </div>
+                  </Badge>
+                  <Badge 
+                    variant={question.type === "explicit" ? "default" : "secondary"}
+                    className="capitalize"
+                  >
+                    {question.type}
+                  </Badge>
+                </div>
               </div>
             </AccordionTrigger>
             <AccordionContent>
