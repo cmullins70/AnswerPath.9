@@ -153,31 +153,43 @@ export function registerRoutes(app: Express) {
     try {
       console.log("Starting questions export...");
       
-      // Simple query to get raw data
-      const rawQuestions = await db.select()
-        .from(questions)
-        .execute();
+      // Use a raw SQL query with explicit type casting
+      const rawQuestions = await db.execute(sql`
+        SELECT 
+          COALESCE(text, '') as text,
+          COALESCE(type, 'unknown') as type,
+          COALESCE(CASE 
+            WHEN confidence IS NULL OR confidence::text = 'NaN' 
+            THEN 0 
+            ELSE confidence::float 
+          END, 0) as confidence,
+          COALESCE(answer, '') as answer,
+          COALESCE("sourceDocument", '') as source_document
+        FROM questions
+      `);
       
-      console.log(`Retrieved ${rawQuestions.length} questions from database`);
+      console.log('Raw query result:', rawQuestions);
       
-      if (!rawQuestions.length) {
+      if (!Array.isArray(rawQuestions) || !rawQuestions.length) {
+        console.log('No questions found or invalid result structure');
         return res.status(404).json({ error: "No questions found to export" });
       }
 
-      // Process each row carefully with type checking
-      const processedRows = rawQuestions.map((row, index) => {
+      // Process each row with strict type checking
+      const processedRows = rawQuestions.map((row: any, index: number) => {
         try {
-          const confidence = parseFloat(row.confidence?.toString() || '0');
+          // Ensure we have a valid number for confidence
+          const confidenceValue = typeof row.confidence === 'number' ? row.confidence : 0;
+          
           return [
-            String(row.text || '').trim(),
-            String(row.type || 'unknown').trim(),
-            `${(isNaN(confidence) ? 0 : confidence * 100).toFixed(1)}%`,
-            String(row.answer || '').trim(),
-            String(row.source_document || '').trim()
+            String(row.text).trim(),
+            String(row.type).trim(),
+            `${(confidenceValue * 100).toFixed(1)}%`,
+            String(row.answer).trim(),
+            String(row.source_document).trim()
           ];
         } catch (error) {
           console.error(`Error processing row ${index}:`, error);
-          // Return a safe fallback row
           return ['Error processing question', 'unknown', '0%', '', ''];
         }
       });
