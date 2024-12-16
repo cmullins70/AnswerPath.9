@@ -27,5 +27,19 @@ export const selectDocumentSchema = createSelectSchema(documents);
 export const insertQuestionSchema = createInsertSchema(questions);
 export const selectQuestionSchema = createSelectSchema(questions);
 
+export const contexts = pgTable("contexts", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  type: text("type").notNull(), // 'knowledge_base', 'website', 'document'
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export type Document = typeof documents.$inferSelect;
 export type Question = typeof questions.$inferSelect;
+export type Context = typeof contexts.$inferSelect;
+
+export const insertContextSchema = createInsertSchema(contexts);
+export const selectContextSchema = createSelectSchema(contexts);

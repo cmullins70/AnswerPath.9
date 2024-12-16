@@ -3,6 +3,7 @@ import { DocumentUpload } from "@/components/DocumentUpload";
 import { DocumentList } from "@/components/DocumentList";
 import { ProcessingStatus } from "@/components/ProcessingStatus";
 import { QuestionList } from "@/components/QuestionList";
+import { ContextLibrary } from "@/components/ContextLibrary";
 import {
   Card,
   CardContent,
@@ -32,10 +33,11 @@ export default function Home() {
           </Card>
 
           <Tabs defaultValue="documents" value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
+            <TabsList className="grid w-full grid-cols-4 lg:w-[500px]">
               <TabsTrigger value="documents">Documents</TabsTrigger>
               <TabsTrigger value="processing">Processing</TabsTrigger>
               <TabsTrigger value="questions">Questions</TabsTrigger>
+              <TabsTrigger value="context">Context</TabsTrigger>
             </TabsList>
 
             <TabsContent value="documents">
@@ -67,6 +69,17 @@ export default function Home() {
                 </CardHeader>
                 <CardContent>
                   <QuestionList />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="context">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Context Library</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ContextLibrary />
                 </CardContent>
               </Card>
             </TabsContent>

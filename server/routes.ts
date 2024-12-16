@@ -129,6 +129,45 @@ export function registerRoutes(app: Express) {
 
   app.get("/api/questions", async (_req, res) => {
     try {
+  app.get("/api/contexts", async (_req, res) => {
+    try {
+      const allContexts = await db.select().from(contexts);
+      res.json(allContexts);
+    } catch (error) {
+      console.error("Failed to fetch contexts:", error);
+      res.status(500).json({ error: "Failed to fetch contexts" });
+    }
+  });
+
+  app.post("/api/contexts", async (req, res) => {
+    try {
+      const [context] = await db.insert(contexts).values({
+        title: req.body.title,
+        content: req.body.content,
+        type: req.body.type,
+        metadata: {},
+      }).returning();
+      res.json(context);
+    } catch (error) {
+      console.error("Failed to create context:", error);
+      res.status(500).json({ error: "Failed to create context" });
+    }
+  });
+
+  app.delete("/api/contexts/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid context ID" });
+      }
+      await db.delete(contexts).where(eq(contexts.id, id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete context:", error);
+      res.status(500).json({ error: "Failed to delete context" });
+    }
+  });
+
       const allQuestions = await db.select().from(questions);
       res.json(allQuestions);
     } catch (error) {
