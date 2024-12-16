@@ -56,10 +56,14 @@ export class DocumentProcessor {
         case "application/msword": {
           console.log("Processing Word document...");
           const result = await mammoth.extractRawText({ path: tempFilePath });
+          console.log("Extracted Word content:", result.value?.substring(0, 200));
           if (!result.value) {
             throw new Error("Failed to extract text from Word document");
           }
-          docs = [new Document({ pageContent: result.value })];
+          docs = [new Document({ 
+            pageContent: result.value,
+            metadata: { source: file.originalname }
+          })];
           break;
         }
         case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
@@ -71,10 +75,15 @@ export class DocumentProcessor {
           // Process all sheets and combine their content
           const allContent = sheets.map(sheetName => {
             const sheet = workbook.Sheets[sheetName];
-            return `Sheet: ${sheetName}\n${XLSX.utils.sheet_to_csv(sheet)}`;
+            const content = XLSX.utils.sheet_to_csv(sheet);
+            console.log(`Excel sheet ${sheetName} content:`, content.substring(0, 200));
+            return `Sheet: ${sheetName}\n${content}`;
           }).join("\n\n");
           
-          docs = [new Document({ pageContent: allContent })];
+          docs = [new Document({ 
+            pageContent: allContent,
+            metadata: { source: file.originalname }
+          })];
           break;
         }
         default:
@@ -108,25 +117,21 @@ export class DocumentProcessor {
       throw new Error("Documents must be processed before extracting questions");
     }
 
-    const prompt = PromptTemplate.fromTemplate(
-      "You are an expert at analyzing RFI (Request for Information) documents for sales professionals. " +
-      "Please analyze this text and extract questions and requirements:\n\n" +
-      "{text}\n\n" +
-      "Extract both explicit questions (ending with ? or using question words) and implicit requirements " +
-      "(statements starting with 'Vendor must', 'Describe your', 'Provide details', etc.).\n\n" +
-      "For each question or requirement:\n" +
-      "1. Extract the exact text\n" +
-      "2. Classify as 'explicit' for direct questions or 'implicit' for requirements\n" +
-      "3. Generate a professional, detailed answer\n" +
-      "4. Include the source context\n" +
-      "5. Assign a confidence score\n\n" +
-      "Format your response as a JSON array like this:\n" +
-      '[{"text": "What is your approach to data security?", ' +
-      '"type": "explicit", ' +
-      '"confidence": 0.95, ' +
-      '"answer": "Our approach to data security combines industry best practices with...", ' +
-      '"sourceDocument": "Section 2.1 - Security Requirements"}]'
-    );
+    const prompt = new PromptTemplate({
+      template: `You are an expert at analyzing RFI documents. Analyze this text and extract questions:
+
+{text}
+
+Return only a JSON array with this structure (no other text):
+[{
+  "text": "extracted question",
+  "type": "explicit",
+  "confidence": 0.9,
+  "answer": "professional answer",
+  "sourceDocument": "source section"
+}]`,
+      inputVariables: ["text"]
+    });
     const questions: ProcessedQuestion[] = [];
 
     for (const doc of docs) {
