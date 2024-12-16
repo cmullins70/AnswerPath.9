@@ -73,11 +73,16 @@ export function DocumentUpload() {
         <input {...getInputProps()} />
         <Upload className="mx-auto h-12 w-12 text-muted-foreground" />
         <p className="mt-2 text-sm text-muted-foreground">
-          Drag & drop files here, or click to select files
+          Drag & drop RFI documents here, or click to select files
         </p>
         <p className="text-xs text-muted-foreground mt-1">
           Supported formats: PDF, DOC, DOCX, XLS, XLSX
         </p>
+        <ul className="mt-4 text-xs text-muted-foreground list-disc list-inside space-y-1">
+          <li>Maximum file size: 10MB per file</li>
+          <li>Files will be processed to extract questions and requirements</li>
+          <li>Processing may take a few minutes depending on file size</li>
+        </ul>
       </div>
 
       {uploadProgress > 0 && (
