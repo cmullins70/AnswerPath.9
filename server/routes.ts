@@ -139,13 +139,46 @@ export function registerRoutes(app: Express) {
 
   app.get("/api/questions/:documentId", async (req, res) => {
     try {
-      const documentQuestions = await db.select()
-        .from(questions)
-        .where(eq(questions.documentId, parseInt(req.params.documentId)));
-      res.json(documentQuestions);
+      console.log(`Fetching questions for document ID: ${req.params.documentId}`);
+      
+      const documentId = parseInt(req.params.documentId);
+      if (isNaN(documentId)) {
+        return res.status(400).json({ error: "Invalid document ID" });
+      }
+
+      const result = await db.execute(sql`
+        SELECT 
+          id,
+          text,
+          type,
+          COALESCE(
+            CASE WHEN confidence::text = 'NaN' THEN 0
+            ELSE NULLIF(confidence, 'NaN')::float
+            END,
+            0
+          ) as confidence,
+          answer,
+          source_document as "sourceDocument"
+        FROM questions
+        WHERE document_id = ${documentId}
+        ORDER BY id ASC
+      `);
+
+      console.log(`Found ${result.length} questions for document ${documentId}`);
+      res.json(result);
     } catch (error) {
       console.error("Failed to fetch document questions:", error);
-      res.status(500).json({ error: "Failed to fetch document questions" });
+      if (error instanceof Error) {
+        console.error("Error details:", {
+          message: error.message,
+          name: error.name,
+          stack: error.stack
+        });
+      }
+      res.status(500).json({ 
+        error: "Failed to fetch document questions",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
     }
   });
 
