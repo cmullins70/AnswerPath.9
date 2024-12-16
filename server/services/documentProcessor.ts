@@ -119,66 +119,76 @@ Instructions:
    - Include relevant context
    - Provide a confidence score
 
-Format each question as a JSON object in an array with these fields:
-- text: the question text
-- type: "explicit" or "implicit"
-- confidence: number between 0.1 and 1.0
-- answer: brief preliminary answer
-- sourceDocument: relevant context from the document
-
-Response Format:
+Format your response exactly as a JSON array containing objects with these fields:
 [
   {
-    "text": "<question text>",
-    "type": "<explicit or implicit>",
-    "confidence": <number>,
-    "answer": "<preliminary answer>",
-    "sourceDocument": "<relevant context>"
+    "text": "Example: What are the system requirements?",
+    "type": "explicit",
+    "confidence": 0.9,
+    "answer": "Example: The system requires...",
+    "sourceDocument": "Example: Section 2.1: System Requirements..."
   }
 ]
+
+Note: Only respond with valid JSON, no additional text.
 `);
 
-    const chain = RunnableSequence.from([
-      {
-        content: (doc: Document) => doc.pageContent,
-      },
-      questionExtractionPrompt,
-      this.openai,
-      new StringOutputParser(),
-    ]);
-
-    const questions: ProcessedQuestion[] = [];
-    
     try {
+      const questions: ProcessedQuestion[] = [];
+      
       for (const doc of docs) {
         const preview = doc.pageContent.slice(0, 100).replace(/\n/g, ' ');
         console.log(`Processing chunk: "${preview}..."`);
         
         try {
-          console.log("Invoking LLM chain...");
-          const response = await chain.invoke(doc);
-          console.log("Raw LLM response:", response);
+          // Format the content and invoke the LLM
+          const content = doc.pageContent.trim();
+          console.log("Calling OpenAI with content length:", content.length);
+          
+          const response = await this.openai.invoke(
+            await questionExtractionPrompt.format({ content })
+          );
+          
+          console.log("OpenAI Response:", response);
+          
+          // Parse the response text from the ChatMessage
+          const responseText = response.content as string;
+          console.log("Extracted response text:", responseText);
           
           let chunkQuestions: ProcessedQuestion[];
           try {
-            chunkQuestions = JSON.parse(response) as ProcessedQuestion[];
-            console.log(`Successfully parsed ${chunkQuestions.length} questions`);
+            chunkQuestions = JSON.parse(responseText) as ProcessedQuestion[];
+            
+            // Validate the parsed questions
+            if (!Array.isArray(chunkQuestions)) {
+              console.error("Parsed response is not an array:", chunkQuestions);
+              continue;
+            }
+            
+            // Validate each question object
+            const validQuestions = chunkQuestions.filter(q => {
+              return (
+                typeof q.text === 'string' && q.text.length > 0 &&
+                (q.type === 'explicit' || q.type === 'implicit') &&
+                typeof q.confidence === 'number' &&
+                q.confidence >= 0 && q.confidence <= 1 &&
+                typeof q.answer === 'string' &&
+                typeof q.sourceDocument === 'string'
+              );
+            });
+            
+            questions.push(...validQuestions);
+            console.log(`Added ${validQuestions.length} valid questions from chunk`);
+            
           } catch (parseError) {
-            console.error("Failed to parse LLM response as JSON:", parseError);
-            console.error("Raw response was:", response);
+            console.error("Failed to parse OpenAI response as JSON:", parseError);
+            console.error("Raw response was:", responseText);
             continue;
           }
-          
-          if (chunkQuestions && Array.isArray(chunkQuestions)) {
-            questions.push(...chunkQuestions);
-            console.log(`Added ${chunkQuestions.length} questions to results`);
-          } else {
-            console.error("Parsed response is not an array:", chunkQuestions);
-          }
-        } catch (chainError) {
-          console.error("Chain execution failed:", chainError);
-          if (chainError instanceof Error) {
-            console.error("Error details:", chainError.message);
+        } catch (error) {
+          console.error("Error processing chunk:", error);
+          if (error instanceof Error) {
+            console.error("Error details:", error.message, error.stack);
           }
           continue;
         }
