@@ -101,35 +101,30 @@ export class DocumentProcessor {
       throw new Error("Documents must be processed before extracting questions");
     }
 
-    const questionExtractionPrompt = PromptTemplate.fromTemplate(`
-    You are an AI assistant helping to analyze RFI (Request for Information) documents.
-    Analyze the following document content and:
-    1. Identify explicit questions (direct queries marked with question marks or numbered questions)
-    2. Recognize implicit questions (information requests or requirements that need responses)
-    3. For each question:
-       - Extract or formulate the question clearly
-       - Determine if it's explicit or implicit
-       - Note the relevant context from the document
-       - Assign a confidence score (0.1-1.0) based on clarity and context availability
-
-    Format your response as a valid JSON array with this structure:
-    [
-      {
-        "text": "the question text",
-        "type": "explicit",
-        "confidence": 0.95,
-        "answer": "preliminary answer based on context",
-        "sourceDocument": "exact text from the source document"
-      }
-    ]
-
-    Document content to analyze: {context}
-    `);
+    const questionExtractionPrompt = PromptTemplate.fromTemplate(
+      "You are an AI assistant helping to analyze RFI (Request for Information) documents.\n" +
+      "Analyze the following document content and:\n" +
+      "1. Identify explicit questions (direct queries marked with question marks or numbered questions)\n" +
+      "2. Recognize implicit questions (information requests or requirements that need responses)\n" +
+      "3. For each question:\n" +
+      "   - Extract or formulate the question clearly\n" +
+      "   - Determine if it's explicit or implicit\n" +
+      "   - Note the relevant context from the document\n" +
+      "   - Assign a confidence score (0.1-1.0) based on clarity and context availability\n\n" +
+      "Format your response as a valid JSON array with this structure:\n" +
+      "[\n" +
+      "  {\n" +
+      '    "text": "<question text>",\n' +
+      '    "type": "<explicit or implicit>",\n' +
+      '    "confidence": <score between 0.1 and 1.0>,\n' +
+      '    "answer": "<preliminary answer>",\n' +
+      '    "sourceDocument": "<relevant excerpt>"\n' +
+      "  }\n" +
+      "]\n\n" +
+      "Document content to analyze: {input}"
+    );
 
     const chain = RunnableSequence.from([
-      {
-        context: (input: string) => input,
-      },
       questionExtractionPrompt,
       this.openai,
       new StringOutputParser(),
