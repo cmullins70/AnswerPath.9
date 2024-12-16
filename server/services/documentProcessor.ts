@@ -103,8 +103,9 @@ export class DocumentProcessor {
 
       console.log("Splitting document into manageable chunks...");
       const textSplitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 1000,
-        chunkOverlap: 200,
+        chunkSize: 2000,
+        chunkOverlap: 500,
+        separators: ["\n\n", "\n", " ", ""],
       });
 
       const splitDocs = await textSplitter.splitDocuments(docs);
@@ -133,59 +134,46 @@ export class DocumentProcessor {
     if (!this.vectorStore) {
       throw new Error("Documents must be processed before extracting questions");
     }
-    
+
     console.log("Starting question extraction process...");
     console.log(`Processing ${docs.length} document chunks`);
 
-    const template = `You are an AI assistant analyzing RFI documents. Below is the content to analyze:
+    const template = `Analyze this text from an RFI document: {text}
 
-Content:
-{text}
+Extract both explicit questions (marked with ?) and implicit questions (requirements needing responses).
 
-Instructions:
-1. Extract explicit questions (direct queries marked with ? or numbered)
-2. Identify implicit questions (requirements needing responses)
-3. For each question found:
-   - Clearly state the question
-   - Note if it's explicit or implicit
-   - Include relevant context
-   - Provide a confidence score
-
-Format your response as a JSON array with these fields:
-[
-  {
-    "text": "What is the expected response time?",
-    "type": "explicit",
-    "confidence": 0.9,
-    "answer": "Based on the requirements...",
-    "sourceDocument": "Section 3.2: Response Requirements"
-  }
-]
-
-Only respond with valid JSON, no additional text.`;
+Return only a JSON array with this format:
+[{
+  "text": "The actual question found",
+  "type": "explicit or implicit",
+  "confidence": "number between 0-1",
+  "answer": "Draft answer based on context",
+  "sourceDocument": "Section reference"
+}]`;
 
     const questionExtractionPrompt = PromptTemplate.fromTemplate(template);
 
+    const questions: ProcessedQuestion[] = [];
+    
     try {
-      const questions: ProcessedQuestion[] = [];
-      
       for (const doc of docs) {
         const preview = doc.pageContent.slice(0, 100).replace(/\n/g, ' ');
         console.log(`Processing chunk: "${preview}..."`);
         
         try {
-          // Format the content and invoke the LLM
           const text = doc.pageContent.trim();
-          console.log("Calling OpenAI with content length:", text.length);
+          if (!text || text.length < 10) {
+            console.warn("Skipping chunk - insufficient content length:", text.length);
+            continue;
+          }
+          
+          console.log("Processing chunk of length:", text.length);
+          console.log("Content preview:", text.slice(0, 100));
           
           const formattedPrompt = await questionExtractionPrompt.format({ text });
-          console.log("Formatted prompt:", formattedPrompt);
-          
           const response = await this.openai.invoke(formattedPrompt);
-          
           console.log("OpenAI Response:", response);
           
-          // Parse the response text from the ChatMessage
           const responseText = response.content as string;
           console.log("Extracted response text:", responseText);
           
@@ -193,13 +181,11 @@ Only respond with valid JSON, no additional text.`;
           try {
             chunkQuestions = JSON.parse(responseText) as ProcessedQuestion[];
             
-            // Validate the parsed questions
             if (!Array.isArray(chunkQuestions)) {
               console.error("Parsed response is not an array:", chunkQuestions);
               continue;
             }
             
-            // Validate each question object
             const validQuestions = chunkQuestions.filter(q => {
               return (
                 typeof q.text === 'string' && q.text.length > 0 &&
@@ -219,10 +205,10 @@ Only respond with valid JSON, no additional text.`;
             console.error("Raw response was:", responseText);
             continue;
           }
-        } catch (error) {
-          console.error("Error processing chunk:", error);
-          if (error instanceof Error) {
-            console.error("Error details:", error.message, error.stack);
+        } catch (chunkError) {
+          console.error("Error processing chunk:", chunkError);
+          if (chunkError instanceof Error) {
+            console.error("Error details:", chunkError.message, chunkError.stack);
           }
           continue;
         }
