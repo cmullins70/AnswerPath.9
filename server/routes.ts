@@ -186,57 +186,47 @@ export function registerRoutes(app: Express) {
     try {
       console.log("Starting questions export...");
 
-      // Step 1: Get questions with explicit type casting
-      const result = await db.execute(sql`
-        SELECT 
-          id::text,
-          text::text as question_text,
-          type::text as question_type,
-          NULLIF(confidence::text, 'NaN')::float as confidence_score,
-          answer::text,
-          source_document::text
-        FROM questions
-        ORDER BY id ASC
-      `);
+      // Use a simpler query without type casting
+      const allQuestions = await db.select({
+        text: questions.text,
+        type: questions.type,
+        confidence: questions.confidence,
+        answer: questions.answer,
+        sourceDocument: questions.sourceDocument,
+      }).from(questions);
 
-      console.log("Database query completed");
+      console.log(`Retrieved ${allQuestions.length} questions from database`);
 
-      if (!Array.isArray(result) || result.length === 0) {
-        console.log("No questions found in database");
+      if (allQuestions.length === 0) {
         return res.status(404).json({ error: "No questions found to export" });
       }
 
-      console.log(`Found ${result.length} questions to export`);
-
-      // Step 2: Transform data with strict type checking
-      const rows = result.map((row: any) => ({
-        text: String(row.question_text || ''),
-        type: String(row.question_type || 'unknown'),
-        confidence: parseFloat(row.confidence_score) || 0,
-        answer: String(row.answer || ''),
-        source: String(row.source_document || '')
-      }));
-
-      console.log("Data transformation completed");
-
-      // Step 3: Generate CSV content
+      // Generate CSV content with error handling for each row
       let csvContent = 'Question,Type,Confidence,Answer,Source Document\n';
-      
-      for (const row of rows) {
-        const escapedValues = [
-          row.text.replace(/"/g, '""'),
-          row.type.replace(/"/g, '""'),
-          `${(row.confidence * 100).toFixed(1)}%`,
-          row.answer.replace(/"/g, '""'),
-          row.source.replace(/"/g, '""')
-        ].map(val => `"${val}"`);
-        
-        csvContent += escapedValues.join(',') + '\n';
+
+      for (const q of allQuestions) {
+        try {
+          const confidence = typeof q.confidence === 'number' && !isNaN(q.confidence) 
+            ? (q.confidence * 100).toFixed(1) 
+            : '0.0';
+
+          const row = [
+            q.text || '',
+            q.type || 'unknown',
+            `${confidence}%`,
+            q.answer || '',
+            q.sourceDocument || ''
+          ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
+
+          csvContent += row + '\n';
+        } catch (err) {
+          console.error('Error processing row:', err, q);
+          // Skip problematic rows instead of failing the entire export
+          continue;
+        }
       }
 
-      console.log("CSV generation completed");
-
-      // Step 4: Send response
+      // Send response
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="questions.csv"');
       res.send(csvContent);
@@ -245,11 +235,10 @@ export function registerRoutes(app: Express) {
     } catch (error) {
       console.error("Export failed:", error);
       if (error instanceof Error) {
-        console.error({
+        console.error("Error details:", {
           message: error.message,
           name: error.name,
-          stack: error.stack,
-          type: typeof error
+          stack: error.stack
         });
       }
       res.status(500).json({ 
