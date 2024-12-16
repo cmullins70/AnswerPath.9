@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { FileText, Trash2 } from "lucide-react";
 import { DocumentType } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -11,14 +11,56 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 export function DocumentList() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  
   const { data: documents, isLoading } = useQuery<DocumentType[]>({
     queryKey: ["/api/documents"],
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/documents/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to delete document");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+      toast({
+        title: "Success",
+        description: "Document deleted successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   if (isLoading) {
-    return <div>Loading documents...</div>;
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        Loading documents...
+      </div>
+    );
+  }
+
+  if (!documents?.length) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        No documents uploaded yet
+      </div>
+    );
   }
 
   return (
@@ -34,7 +76,7 @@ export function DocumentList() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {documents?.map((doc) => (
+          {documents.map((doc) => (
             <TableRow key={doc.id}>
               <TableCell className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
@@ -60,6 +102,8 @@ export function DocumentList() {
                   variant="ghost"
                   size="icon"
                   className="text-destructive hover:text-destructive/90"
+                  onClick={() => deleteMutation.mutate(doc.id)}
+                  disabled={deleteMutation.isPending}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
