@@ -1,10 +1,12 @@
 import type { Express } from "express";
-import { createServer } from "http";
+import { createServer, type Server } from "http";
 import multer from "multer";
 import { db } from "@db";
 import { documents, questions } from "@db/schema";
 import { eq, sql } from "drizzle-orm";
 import { DocumentProcessor } from "./services/documentProcessor";
+import { WebScraper } from "./services/webScraper";
+import { contexts } from "@db/schema";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -24,6 +26,7 @@ const upload = multer({
 });
 
 const processor = new DocumentProcessor();
+const webScraper = new WebScraper();
 const processingStatus = new Map<number, {
   currentStep: string;
   completedSteps: string[];
@@ -129,6 +132,14 @@ export function registerRoutes(app: Express) {
 
   app.get("/api/questions", async (_req, res) => {
     try {
+      const allQuestions = await db.select().from(questions);
+      res.json(allQuestions);
+    } catch (error) {
+      console.error("Failed to fetch questions:", error);
+      res.status(500).json({ error: "Failed to fetch questions" });
+    }
+  });
+
   app.get("/api/contexts", async (_req, res) => {
     try {
       const allContexts = await db.select().from(contexts);
@@ -157,6 +168,32 @@ export function registerRoutes(app: Express) {
   app.delete("/api/contexts/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+  app.post("/api/contexts/scrape", async (req, res) => {
+    try {
+      const { url } = req.body;
+      
+      if (!url || !webScraper.validateUrl(url)) {
+        return res.status(400).json({ error: "Invalid URL provided" });
+      }
+
+      const { title, content } = await webScraper.scrapeWebsite(url);
+
+      const [context] = await db.insert(contexts).values({
+        title,
+        content,
+        type: "website",
+        metadata: { url },
+      }).returning();
+
+      res.json(context);
+    } catch (error) {
+      console.error("Failed to scrape website:", error);
+      res.status(500).json({ 
+        error: "Failed to scrape website",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
       if (isNaN(id)) {
         return res.status(400).json({ error: "Invalid context ID" });
       }
@@ -168,15 +205,27 @@ export function registerRoutes(app: Express) {
     }
   });
 
-      const allQuestions = await db.select().from(questions);
-      res.json(allQuestions);
+  app.post("/api/scrape", async (req, res) => {
+    try {
+      const url = req.body.url;
+      if (!url) {
+        return res.status(400).json({ error: "URL is required" });
+      }
+      const scrapedData = await webScraper.scrape(url);
+      const [context] = await db.insert(contexts).values({
+        title: url,
+        content: scrapedData,
+        type: "webpage",
+        metadata: {},
+      }).returning();
+      res.json(context);
     } catch (error) {
-      console.error("Failed to fetch questions:", error);
-      res.status(500).json({ error: "Failed to fetch questions" });
+      console.error("Web scraping failed:", error);
+      res.status(500).json({ error: "Web scraping failed" });
     }
   });
 
-  // Export endpoint needs to come before the :documentId route to prevent conflicts
+
   app.get("/api/questions/export", async (_req, res) => {
     console.log("Starting CSV export of all questions");
     try {

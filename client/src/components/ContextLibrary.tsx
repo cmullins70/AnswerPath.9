@@ -40,6 +40,7 @@ export function ContextLibrary() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [type, setType] = useState<ContextType["type"]>("knowledge_base");
+  const [url, setUrl] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -101,9 +102,9 @@ export function ContextLibrary() {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !content.trim()) {
+    if (!title.trim()) {
       toast({
         title: "Error",
         description: "Please fill in all fields",
@@ -111,7 +112,47 @@ export function ContextLibrary() {
       });
       return;
     }
-    createMutation.mutate({ title, content, type });
+
+    if (type === "website") {
+      if (!url) {
+        toast({
+          title: "Error",
+          description: "Please enter a URL for website content",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      const response = await fetch("/api/contexts/scrape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.text();
+        toast({
+          title: "Error",
+          description: error || "Failed to scrape website",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      queryClient.invalidateQueries({ queryKey: ["/api/contexts"] });
+      setIsOpen(false);
+      setUrl("");
+    } else {
+      if (!content.trim()) {
+        toast({
+          title: "Error",
+          description: "Please fill in all fields",
+          variant: "destructive",
+        });
+        return;
+      }
+      createMutation.mutate({ title, content, type });
+    }
   };
 
   const getIcon = (type: ContextType["type"]) => {
@@ -170,15 +211,29 @@ export function ContextLibrary() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Content</label>
-                <Textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Enter context content"
-                  rows={6}
-                />
-              </div>
+
+              {type === "website" ? (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Website URL</label>
+                  <Input
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="https://example.com"
+                    type="url"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Content</label>
+                  <Textarea
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="Enter context content"
+                    rows={6}
+                  />
+                </div>
+              )}
+              
               <Button type="submit" className="w-full" disabled={createMutation.isPending}>
                 {createMutation.isPending ? "Adding..." : "Add Context"}
               </Button>
