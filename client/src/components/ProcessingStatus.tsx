@@ -12,13 +12,13 @@ import {
 } from "@/components/ui/tooltip";
 
 export function ProcessingStatus() {
-  const { data: documents, isLoading: isLoadingDocuments } = useQuery<DocumentType[]>({
+  const { data: documents } = useQuery<DocumentType[]>({
     queryKey: ["/api/documents"],
   });
 
   const processingDocuments = documents?.filter(doc => doc.status === 'processing') ?? [];
   
-  const { data: status, isLoading: isLoadingStatus } = useQuery<ProcessingStatusType>({
+  const { data: status } = useQuery<ProcessingStatusType>({
     queryKey: ["/api/processing/status", processingDocuments[0]?.id],
     enabled: processingDocuments.length > 0,
     refetchInterval: (data) => {
@@ -29,18 +29,10 @@ export function ProcessingStatus() {
     },
   });
 
-  // Log status updates for debugging
-  React.useEffect(() => {
-    if (status) {
-      console.log("Processing status update:", status);
-    }
-  }, [status]);
-
-  if (isLoadingDocuments || isLoadingStatus) {
+  if (!processingDocuments.length) {
     return (
-      <div className="text-center py-8">
-        <Progress value={0} />
-        <p className="text-sm text-muted-foreground mt-2">Loading status...</p>
+      <div className="text-center py-8 text-muted-foreground">
+        No documents are currently being processed
       </div>
     );
   }
@@ -59,44 +51,31 @@ export function ProcessingStatus() {
     {
       id: "questions",
       label: "Question Identification",
-      description: "Detecting explicit and implicit questions in the document"
+      description: "Detecting explicit and implicit questions"
     },
     {
       id: "analysis",
       label: "Context Analysis",
-      description: "Analyzing document context and preparing knowledge base"
-    },
-    {
-      id: "generation",
-      label: "Answer Generation",
-      description: "Generating accurate responses with source references"
-    },
+      description: "Analyzing context and preparing responses"
+    }
   ];
-
-  if (processingDocuments.length === 0) {
-    return (
-      <div className="text-center py-8 text-muted-foreground">
-        No documents are currently being processed
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Progress
-          value={status?.progress || 0}
+          value={status?.progress ?? 0}
           className={status?.currentStep === "error" ? "bg-red-200" : ""}
         />
         <span className="text-sm font-medium">
-          {status?.progress || 0}%
+          {status?.progress ?? 0}%
         </span>
       </div>
 
       <div className="grid gap-4">
         {steps.map((step) => {
           const isActive = status?.currentStep === step.id;
-          const isComplete = status?.completedSteps.includes(step.id);
+          const isComplete = status?.completedSteps?.includes(step.id);
           const isError = status?.currentStep === "error";
 
           return (
@@ -138,7 +117,7 @@ export function ProcessingStatus() {
                       <span className="text-sm text-destructive font-medium">
                         Error occurred
                       </span>
-                      {status.error && (
+                      {status?.error && (
                         <span className="text-xs text-muted-foreground mt-1">
                           {status.error}
                         </span>

@@ -7,7 +7,7 @@ export type DocumentType = {
 };
 
 export type ProcessingStatusType = {
-  currentStep: string;
+  currentStep: "preparation" | "extraction" | "questions" | "analysis" | "complete" | "error";
   completedSteps: string[];
   progress: number;
   error?: string;
