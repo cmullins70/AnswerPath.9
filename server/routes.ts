@@ -181,19 +181,26 @@ export function registerRoutes(app: Express) {
       }).from(questions);
       
       console.log(`Successfully retrieved ${allQuestions.length} questions`);
+
+      if (!Array.isArray(allQuestions)) {
+        throw new Error("Database query did not return an array of questions");
+      }
       
-      // Convert to CSV format
+      // Convert to CSV format with error handling for each field
       const csvRows = [
         // Header row
         ["Question", "Type", "Confidence", "Answer", "Source Document"],
         // Data rows
-        ...allQuestions.map(q => [
-          q.text || '',
-          q.type || '',
-          typeof q.confidence === 'number' ? (q.confidence * 100).toFixed(1) + '%' : 'N/A',
-          q.answer || '',
-          q.sourceDocument || ''
-        ])
+        ...allQuestions.map((q, index) => {
+          console.log(`Processing row ${index}:`, q);
+          return [
+            String(q.text || '').trim(),
+            String(q.type || 'unknown').trim(),
+            !isNaN(q.confidence) ? `${(Number(q.confidence) * 100).toFixed(1)}%` : '0%',
+            String(q.answer || '').trim(),
+            String(q.sourceDocument || '').trim()
+          ];
+        })
       ];
       
       console.log(`Formatted ${csvRows.length - 1} data rows`);
