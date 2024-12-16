@@ -72,7 +72,6 @@ export class DocumentProcessor {
           const workbook = XLSX.read(await fs.readFile(tempFilePath));
           const sheets = workbook.SheetNames;
           
-          // Process all sheets and combine their content
           const allContent = sheets.map(sheetName => {
             const sheet = workbook.Sheets[sheetName];
             const content = XLSX.utils.sheet_to_csv(sheet);
@@ -118,51 +117,49 @@ export class DocumentProcessor {
     }
 
     const prompt = new PromptTemplate({
-      template: `You are an expert at analyzing RFI documents. Analyze this text and extract questions:
+      template: `You are an expert at analyzing RFI documents. Analyze the following text and extract all questions and requirements:
 
 {text}
 
-Return only a JSON array with this structure (no other text):
-[{
-  "text": "extracted question",
-  "type": "explicit",
-  "confidence": 0.9,
-  "answer": "professional answer",
-  "sourceDocument": "source section"
-}]`,
+For each question or requirement found, provide:
+1. The exact text of the question or requirement
+2. Classify it as "explicit" for direct questions or "implicit" for requirements
+3. A confidence score between 0 and 1
+4. A professional and detailed answer
+5. The source section where it was found
+
+Format your response as a JSON array only, no additional text.`,
       inputVariables: ["text"]
     });
+
     const questions: ProcessedQuestion[] = [];
 
     for (const doc of docs) {
       const text = doc.pageContent.trim();
-      if (!text || text.length < 20) continue;
+      if (!text || text.length < 20) {
+        console.log("Skipping short text chunk");
+        continue;
+      }
 
       try {
         console.log("Processing document chunk:", text.substring(0, 100) + "...");
         
         const formattedPrompt = await prompt.format({ text });
-        console.log("Sending formatted prompt to OpenAI");
+        console.log("Formatted prompt:", formattedPrompt);
         
         const response = await this.openai.invoke(formattedPrompt);
-        console.log("Received response from OpenAI");
+        console.log("Raw OpenAI response:", response);
         
         if (!response.content) {
-          console.log("Empty response from OpenAI");
+          console.log("Empty response content from OpenAI");
           continue;
         }
 
+        // Extract and parse the response
         try {
-          const content = response.content;
-          if (!content) {
-            console.log("Empty response from OpenAI");
-            continue;
-          }
-
-          // Extract the actual response content
-          const contentStr = typeof content === 'string' 
-            ? content 
-            : JSON.stringify(content);
+          const contentStr = typeof response.content === 'string' 
+            ? response.content 
+            : JSON.stringify(response.content);
 
           console.log("Processing OpenAI response:", contentStr);
 
@@ -199,15 +196,11 @@ Return only a JSON array with this structure (no other text):
 
           console.log(`Extracted ${valid.length} valid questions from chunk`);
           questions.push(...valid);
-        } catch (e) {
-          console.error("Failed to parse OpenAI response:", e);
-          if (e instanceof Error) {
-            console.error("Error details:", e.message);
-            console.error("Stack trace:", e.stack);
-          }
+        } catch (error) {
+          console.error("Failed to parse response:", error);
         }
-      } catch (e) {
-        console.error("Failed to process document chunk:", e);
+      } catch (error) {
+        console.error("Failed to process chunk:", error);
       }
     }
 
