@@ -1,10 +1,9 @@
 import { Document } from "langchain/document";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { OpenAIEmbeddings } from "langchain/embeddings/openai";
-import { ChatOpenAI } from "@langchain/openai";
+import { ChatOpenAI } from "langchain/chat_models/openai";
 import { PromptTemplate } from "langchain/prompts";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
-import * as pdfParse from 'pdf-parse';
 import * as mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import * as fs from "fs/promises";
@@ -49,27 +48,33 @@ export class DocumentProcessor {
       let docs: Document[] = [];
 
       switch (file.mimetype) {
-        case "application/pdf": {
-          const dataBuffer = await fs.readFile(tempFilePath);
-          const pdfData = await pdfParse(dataBuffer);
-          docs = [new Document({ pageContent: pdfData.text })];
-          break;
-        }
         case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         case "application/msword": {
+          console.log("Processing Word document...");
           const result = await mammoth.extractRawText({ path: tempFilePath });
+          if (!result.value) {
+            throw new Error("Failed to extract text from Word document");
+          }
           docs = [new Document({ pageContent: result.value })];
           break;
         }
         case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
         case "application/vnd.ms-excel": {
+          console.log("Processing Excel document...");
           const workbook = XLSX.read(await fs.readFile(tempFilePath));
-          const csvContent = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
-          docs = [new Document({ pageContent: csvContent })];
+          const sheets = workbook.SheetNames;
+          
+          // Process all sheets and combine their content
+          const allContent = sheets.map(sheetName => {
+            const sheet = workbook.Sheets[sheetName];
+            return `Sheet: ${sheetName}\n${XLSX.utils.sheet_to_csv(sheet)}`;
+          }).join("\n\n");
+          
+          docs = [new Document({ pageContent: allContent })];
           break;
         }
         default:
-          throw new Error(`Unsupported file type: ${file.mimetype}`);
+          throw new Error(`Unsupported file type: ${file.mimetype}. Currently supporting only Word and Excel files.`);
       }
 
       const textSplitter = new RecursiveCharacterTextSplitter({
@@ -99,20 +104,27 @@ export class DocumentProcessor {
       throw new Error("Documents must be processed before extracting questions");
     }
 
-    const template = `You are an expert at analyzing RFI documents. Your task is to extract questions and requirements from the following text:
+    const template = `You are an expert at analyzing RFI (Request for Information) documents for sales professionals.
+Your task is to carefully extract and analyze questions and requirements from the following text:
 
 {text}
 
-Carefully identify:
-1. Explicit questions (marked with ? or using question words like what, how, when)
-2. Implicit requirements (statements that need responses like "Vendor must..." or "Describe your...")
+Follow these rules to identify questions:
+1. Explicit questions: Direct questions marked with ? or using question words (what, how, when, etc.)
+2. Implicit requirements: Statements that need responses (e.g., "Vendor must...", "Describe your...", "Provide details about...")
+3. Generate detailed, professional answers that:
+   - Are specific and actionable
+   - Include relevant technical details
+   - Maintain a professional tone
+   - Focus on value proposition and capabilities
+   - Demonstrate understanding of business requirements
 
 Return a JSON array with exactly this format (no other text):
 [{
   "text": "the complete question or requirement text",
   "type": "explicit" | "implicit",
   "confidence": number between 0-1,
-  "answer": "detailed draft answer",
+  "answer": "detailed professional answer that addresses the specific requirement",
   "sourceDocument": "relevant context where found"
 }]`;
 
