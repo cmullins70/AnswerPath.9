@@ -2,7 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { ProcessingStatusType } from "@/lib/types";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2, Circle, Clock } from "lucide-react";
+import { CheckCircle2, Circle, Clock, HelpCircle } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export function ProcessingStatus() {
   const { data: status } = useQuery<ProcessingStatusType>({
@@ -58,8 +64,32 @@ export function ProcessingStatus() {
                   ) : (
                     <Circle className="h-5 w-5 text-gray-300 flex-shrink-0" />
                   )}
-                  <div className="ml-3">
-                    <h4 className="font-medium">{step.label}</h4>
+                  <div className="ml-3 flex-grow">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-medium">{step.label}</h4>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{step.description}</p>
+                            {step.id === "extraction" && (
+                              <p>Handles multiple file formats and structures</p>
+                            )}
+                            {step.id === "questions" && (
+                              <p>Uses AI to identify both direct and indirect questions</p>
+                            )}
+                            {step.id === "analysis" && (
+                              <p>Links questions with relevant context and requirements</p>
+                            )}
+                            {step.id === "generation" && (
+                              <p>Generates accurate responses with confidence scores</p>
+                            )}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
                     <p className="text-sm text-muted-foreground mt-1">
                       {step.description}
                     </p>
