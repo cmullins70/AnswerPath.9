@@ -3,7 +3,7 @@ import { createServer } from "http";
 import multer from "multer";
 import { db } from "@db";
 import { documents, questions } from "@db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { DocumentProcessor } from "./services/documentProcessor";
 
 const upload = multer({
