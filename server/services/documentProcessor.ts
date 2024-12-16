@@ -104,7 +104,8 @@ export class DocumentProcessor {
       throw new Error("Documents must be processed before extracting questions");
     }
 
-    const template = `You are an expert at analyzing RFI (Request for Information) documents for sales professionals.
+    const template = new PromptTemplate({
+      template: `You are an expert at analyzing RFI (Request for Information) documents for sales professionals.
 Your task is to carefully extract and analyze questions and requirements from the following text:
 
 {text}
@@ -126,9 +127,9 @@ Return a JSON array with exactly this format (no other text):
   "confidence": number between 0-1,
   "answer": "detailed professional answer that addresses the specific requirement",
   "sourceDocument": "relevant context where found"
-}]`;
-
-    const prompt = PromptTemplate.fromTemplate(template);
+}]`,
+      inputVariables: ["text"]
+    });
     const questions: ProcessedQuestion[] = [];
 
     for (const doc of docs) {
@@ -145,8 +146,12 @@ Return a JSON array with exactly this format (no other text):
         }
 
         try {
-          console.log("Raw OpenAI response:", response.content);
-          const parsed = JSON.parse(response.content) as ProcessedQuestion[];
+          const content = Array.isArray(response.content) 
+            ? response.content[0].text 
+            : response.content;
+            
+          console.log("Raw OpenAI response:", content);
+          const parsed = JSON.parse(content) as ProcessedQuestion[];
           
           if (!Array.isArray(parsed)) {
             console.log("Response is not an array:", parsed);
