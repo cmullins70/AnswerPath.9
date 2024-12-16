@@ -152,110 +152,77 @@ export function registerRoutes(app: Express) {
   app.get("/api/questions/export", async (_req, res) => {
     try {
       console.log("Starting questions export...");
-      
-      // Use raw SQL to handle type casting and NaN values properly
-      const rawQuery = sql`
+
+      // Step 1: Get questions with explicit type casting
+      const result = await db.execute(sql`
         SELECT 
-          text,
-          type,
-          CASE 
-            WHEN confidence IS NULL OR confidence::text = 'NaN' THEN 0
-            ELSE confidence::real
-          END as confidence,
-          COALESCE(answer, '') as answer,
-          source_document
+          id::text,
+          text::text as question_text,
+          type::text as question_type,
+          NULLIF(confidence::text, 'NaN')::float as confidence_score,
+          answer::text,
+          source_document::text
         FROM questions
-      `;
-      
-      console.log("Executing export query...");
-      const allQuestions = await db.execute(rawQuery);
-      console.log("Query executed successfully");
-      
-      if (!allQuestions.length) {
+        ORDER BY id ASC
+      `);
+
+      console.log("Database query completed");
+
+      if (!Array.isArray(result) || result.length === 0) {
         console.log("No questions found in database");
         return res.status(404).json({ error: "No questions found to export" });
       }
 
-      console.log(`Retrieved ${allQuestions.length} questions from database`);
+      console.log(`Found ${result.length} questions to export`);
+
+      // Step 2: Transform data with strict type checking
+      const rows = result.map((row: any) => ({
+        text: String(row.question_text || ''),
+        type: String(row.question_type || 'unknown'),
+        confidence: parseFloat(row.confidence_score) || 0,
+        answer: String(row.answer || ''),
+        source: String(row.source_document || '')
+      }));
+
+      console.log("Data transformation completed");
+
+      // Step 3: Generate CSV content
+      let csvContent = 'Question,Type,Confidence,Answer,Source Document\n';
       
-      console.log(`Retrieved ${allQuestions.length} questions from database`);
-      
-      // Process rows with careful type checking and error handling
-      const processedRows = allQuestions.map((q, idx) => {
-        try {
-          // Ensure all fields are strings or properly formatted
-          const text = q.text || '';
-          const type = q.type || 'unknown';
-          const confidence = typeof q.confidence === 'number' && !isNaN(q.confidence) 
-            ? q.confidence 
-            : 0;
-          const answer = q.answer || '';
-          const source = q.sourceDocument || '';
-          
-          console.log(`Processing row ${idx}:`, {
-            text: text.substring(0, 50) + '...',
-            type,
-            confidence,
-            hasAnswer: !!answer,
-            hasSource: !!source
-          });
+      for (const row of rows) {
+        const escapedValues = [
+          row.text.replace(/"/g, '""'),
+          row.type.replace(/"/g, '""'),
+          `${(row.confidence * 100).toFixed(1)}%`,
+          row.answer.replace(/"/g, '""'),
+          row.source.replace(/"/g, '""')
+        ].map(val => `"${val}"`);
+        
+        csvContent += escapedValues.join(',') + '\n';
+      }
 
-          return [
-            text.trim(),
-            type.trim(),
-            `${(confidence * 100).toFixed(1)}%`,
-            answer.trim(),
-            source.trim()
-          ];
-        } catch (err) {
-          console.error(`Error processing row ${idx}:`, err);
-          return ['Error processing row', 'unknown', '0%', '', ''];
-        }
-      });
+      console.log("CSV generation completed");
 
-      console.log(`Successfully processed ${processedRows.length} rows`);
-
-      // Build CSV with headers
-      const csvRows = [
-        ['Question', 'Type', 'Confidence', 'Answer', 'Source Document'],
-        ...processedRows
-      ];
-
-      // Convert to CSV string with careful error handling
-      const csvContent = csvRows
-        .map(row => 
-          row.map(cell => {
-            try {
-              // Handle null/undefined and escape quotes
-              const value = (cell ?? '').toString();
-              const escaped = value.replace(/"/g, '""');
-              return `"${escaped}"`;
-            } catch (err) {
-              console.error('Error escaping cell:', err);
-              return '""';
-            }
-          }).join(',')
-        )
-        .join('\n');
-
-      console.log(`Generated CSV content (${csvContent.length} bytes)`);
-      
-      // Set headers and send response
+      // Step 4: Send response
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="questions.csv"');
       res.send(csvContent);
-      
+
       console.log("Export completed successfully");
     } catch (error) {
       console.error("Export failed:", error);
       if (error instanceof Error) {
-        console.error("Error details:", {
+        console.error({
           message: error.message,
+          name: error.name,
           stack: error.stack,
-          name: error.name
+          type: typeof error
         });
       }
-      res.status(500).json({ error: "Failed to export questions" });
+      res.status(500).json({ 
+        error: "Failed to export questions",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
     }
   });
 
