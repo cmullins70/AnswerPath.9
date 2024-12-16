@@ -14,7 +14,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-export function DocumentUpload() {
+interface DocumentUploadProps {
+  onUploadSuccess?: () => void;
+}
+
+export function DocumentUpload({ onUploadSuccess }: DocumentUploadProps) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -45,6 +49,7 @@ export function DocumentUpload() {
         description: "Documents uploaded successfully",
       });
       setUploadProgress(0);
+      onUploadSuccess?.();
     },
     onError: (error) => {
       toast({

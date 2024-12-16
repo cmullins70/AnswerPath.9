@@ -1,11 +1,19 @@
+import { useState } from "react";
 import { DocumentUpload } from "@/components/DocumentUpload";
 import { DocumentList } from "@/components/DocumentList";
 import { ProcessingStatus } from "@/components/ProcessingStatus";
 import { QuestionList } from "@/components/QuestionList";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Home() {
+  const [activeTab, setActiveTab] = useState("documents");
+  
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="container mx-auto">
@@ -19,11 +27,11 @@ export default function Home() {
               <CardTitle>Document Upload</CardTitle>
             </CardHeader>
             <CardContent>
-              <DocumentUpload />
+              <DocumentUpload onUploadSuccess={() => setActiveTab("processing")} />
             </CardContent>
           </Card>
 
-          <Tabs defaultValue="documents">
+          <Tabs defaultValue="documents" value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
               <TabsTrigger value="documents">Documents</TabsTrigger>
               <TabsTrigger value="processing">Processing</TabsTrigger>
