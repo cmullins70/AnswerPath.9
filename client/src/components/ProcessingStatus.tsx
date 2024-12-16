@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ProcessingStatusType } from "@/lib/types";
+import { ProcessingStatusType, DocumentType } from "@/lib/types";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { CheckCircle2, Circle, Clock, HelpCircle } from "lucide-react";

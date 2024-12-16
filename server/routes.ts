@@ -124,6 +124,13 @@ async function processDocument(documentId: number, file: Express.Multer.File) {
 
     // Extract questions
     const extractedQuestions = await processor.extractQuestions(docs);
+    
+    // Update status to analysis
+    processingStatus.set(documentId, {
+      currentStep: "analysis",
+      completedSteps: ["extraction", "questions"],
+      progress: 75
+    });
 
     // Save questions to database
     await Promise.all(
@@ -162,7 +169,10 @@ async function processDocument(documentId: number, file: Express.Multer.File) {
 
     await db
       .update(documents)
-      .set({ status: "error", metadata: { error: error.message } })
+      .set({ 
+        status: "error", 
+        metadata: { error: error instanceof Error ? error.message : "Unknown error occurred" } 
+      })
       .where(eq(documents.id, documentId));
   }
 }

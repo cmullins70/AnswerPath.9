@@ -23,7 +23,7 @@ export type ProcessedQuestion = {
 };
 
 export class DocumentProcessor {
-  private openai: OpenAI;
+  private openai: ChatOpenAI;
   private embeddings: OpenAIEmbeddings;
   private vectorStore: MemoryVectorStore | null = null;
 
@@ -68,7 +68,7 @@ export class DocumentProcessor {
 
         case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
         case "application/vnd.ms-excel":
-          const workbook = XLSX.readFile(tempFilePath);
+          const workbook = XLSX.read(await fs.readFile(tempFilePath));
           const csvContent = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
           const loader = new CSVLoader(new Blob([csvContent]));
           docs = await loader.load();
