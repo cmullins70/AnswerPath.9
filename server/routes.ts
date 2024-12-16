@@ -165,13 +165,19 @@ export function registerRoutes(app: Express) {
         return res.status(404).json({ error: "No questions found to export" });
       }
 
-      // Fetch questions with explicit type casting
+      // Fetch questions with explicit type casting and NULL handling
       const allQuestions = await db.select({
-        text: sql<string>`text::text`,
-        type: sql<string>`type::text`,
-        confidence: sql<number>`COALESCE(confidence::float, 0)`,
-        answer: sql<string>`COALESCE(answer::text, '')`,
-        sourceDocument: sql<string>`COALESCE(source_document::text, '')`,
+        text: sql<string>`COALESCE(${questions.text}, '')::text`,
+        type: sql<string>`COALESCE(${questions.type}, 'unknown')::text`,
+        confidence: sql<number>`
+          CASE 
+            WHEN ${questions.confidence} IS NULL OR ${questions.confidence}::text = 'NaN' 
+            THEN 0 
+            ELSE COALESCE(${questions.confidence}::float, 0) 
+          END
+        `,
+        answer: sql<string>`COALESCE(${questions.answer}, '')::text`,
+        sourceDocument: sql<string>`COALESCE(${questions.sourceDocument}, '')::text`,
       }).from(questions);
       
       console.log(`Successfully retrieved ${allQuestions.length} questions`);
