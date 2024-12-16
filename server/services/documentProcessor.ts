@@ -33,15 +33,14 @@ export class DocumentProcessor {
     }
 
     this.openai = new ChatOpenAI({
-      modelName: "gpt-4-1106-preview",
-      temperature: 0.0,
-      maxTokens: 4096
+      modelName: "gpt-3.5-turbo",
+      temperature: 0,
+      maxTokens: 2000
     });
 
     this.embeddings = new OpenAIEmbeddings({
-      modelName: "text-embedding-3-small",
-      stripNewLines: true,
-      batchSize: 512
+      modelName: "text-embedding-ada-002",
+      stripNewLines: true
     });
   }
 
@@ -97,29 +96,29 @@ export class DocumentProcessor {
       throw new Error("Documents must be processed before extracting questions");
     }
 
-    const retriever = this.vectorStore.asRetriever();
-
     const questionExtractionPrompt = PromptTemplate.fromTemplate(`
-    Analyze the following document and:
-    1. Identify explicit questions (direct queries)
-    2. Recognize implicit questions (implied information requests)
+    You are an AI assistant helping to analyze RFI (Request for Information) documents.
+    Analyze the following document content and:
+    1. Identify explicit questions (direct queries marked with question marks or numbered questions)
+    2. Recognize implicit questions (information requests or requirements that need responses)
     3. For each question:
+       - Extract or formulate the question clearly
        - Determine if it's explicit or implicit
-       - Generate a detailed answer using the context
-       - Assign a confidence score (0-1)
+       - Note the relevant context from the document
+       - Assign a confidence score (0.1-1.0) based on clarity and context availability
 
-    Format the response as a valid JSON array with this structure:
+    Format your response as a valid JSON array with this structure:
     [
       {
-        "text": "the question",
-        "type": "explicit or implicit",
+        "text": "the question text",
+        "type": "explicit",
         "confidence": 0.95,
-        "answer": "detailed answer",
-        "sourceDocument": "relevant section from source"
+        "answer": "preliminary answer based on context",
+        "sourceDocument": "exact text from the source document"
       }
     ]
 
-    Document: {context}
+    Document content to analyze: {context}
     `);
 
     const chain = RunnableSequence.from([
@@ -131,15 +130,27 @@ export class DocumentProcessor {
       new StringOutputParser(),
     ]);
 
-    const combinedText = docs.map(doc => doc.pageContent).join("\n\n");
+    const questions: ProcessedQuestion[] = [];
     
     try {
-      const response = await chain.invoke(combinedText);
-      const questions = JSON.parse(response);
-      return questions as ProcessedQuestion[];
+      for (let i = 0; i < docs.length; i++) {
+        const doc = docs[i];
+        console.log(`Processing document chunk ${i + 1}/${docs.length}`);
+        
+        const response = await chain.invoke(doc.pageContent);
+        try {
+          const chunkQuestions = JSON.parse(response) as ProcessedQuestion[];
+          questions.push(...chunkQuestions);
+        } catch (parseError) {
+          console.error("Failed to parse questions from chunk:", parseError);
+          continue;
+        }
+      }
+
+      return questions;
     } catch (error) {
       console.error("Failed to process questions:", error);
-      return [];
+      throw error;
     }
   }
 }

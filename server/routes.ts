@@ -69,10 +69,23 @@ export function registerRoutes(app: Express) {
 
   app.get("/api/processing/status", async (req, res) => {
     const documentId = parseInt(req.query.documentId as string);
+    if (isNaN(documentId)) {
+      return res.json({
+        currentStep: "queued",
+        completedSteps: [],
+        progress: 0
+      });
+    }
+    
+    const doc = await db.select().from(documents).where(eq(documents.id, documentId)).limit(1);
+    if (!doc.length) {
+      return res.status(404).json({ error: "Document not found" });
+    }
+
     const status = processingStatus.get(documentId) || {
-      currentStep: "queued",
+      currentStep: doc[0].status === "error" ? "error" : "queued",
       completedSteps: [],
-      progress: 0
+      progress: doc[0].status === "error" ? 0 : doc[0].status === "processed" ? 100 : 0
     };
     res.json(status);
   });

@@ -12,17 +12,26 @@ import {
 } from "@/components/ui/tooltip";
 
 export function ProcessingStatus() {
-  const { data: documents } = useQuery<DocumentType[]>({
+  const { data: documents, isLoading: isLoadingDocuments } = useQuery<DocumentType[]>({
     queryKey: ["/api/documents"],
   });
 
   const processingDocuments = documents?.filter(doc => doc.status === 'processing') ?? [];
   
-  const { data: status } = useQuery<ProcessingStatusType>({
+  const { data: status, isLoading: isLoadingStatus } = useQuery<ProcessingStatusType>({
     queryKey: ["/api/processing/status", processingDocuments[0]?.id],
     enabled: processingDocuments.length > 0,
     refetchInterval: processingDocuments.length > 0 ? 1000 : false, // Poll every second while processing
   });
+
+  if (isLoadingDocuments || isLoadingStatus) {
+    return (
+      <div className="text-center py-8">
+        <Progress value={0} />
+        <p className="text-sm text-muted-foreground mt-2">Loading status...</p>
+      </div>
+    );
+  }
 
   const steps = [
     {
