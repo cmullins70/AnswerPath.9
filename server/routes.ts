@@ -178,9 +178,11 @@ export function registerRoutes(app: Express) {
         `,
         answer: sql<string>`COALESCE(${questions.answer}, '')::text`,
         sourceDocument: sql<string>`COALESCE(${questions.sourceDocument}, '')::text`,
-      }).from(questions);
+      }).from(questions).prepare();
       
-      console.log(`Successfully retrieved ${allQuestions.length} questions`);
+      console.log(`Prepared SQL query for questions export`);
+      const result = await allQuestions.execute();
+      console.log(`Successfully retrieved ${result.length} questions`);
 
       if (!Array.isArray(allQuestions)) {
         throw new Error("Database query did not return an array of questions");
