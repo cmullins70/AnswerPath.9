@@ -117,24 +117,22 @@ export class DocumentProcessor {
     }
 
     const prompt = new PromptTemplate({
-      template: `You are an expert at analyzing RFI documents. Your task is to extract questions and requirements from the following text:
+      template: `Analyze this RFI document text and extract questions and requirements:
 
 {text}
 
-Analyze the text and return only a JSON array. Each object in the array must contain:
-1. A "text" field with the complete question or requirement
-2. A "type" field that is either "explicit" or "implicit"
-3. A "confidence" field with a number from 0-1
-4. An "answer" field with a detailed response
-5. A "sourceDocument" field indicating where it was found
+Respond with a JSON array where each item has these fields:
+- text (the question or requirement)
+- type (must be "explicit" or "implicit")
+- confidence (a number between 0 and 1)
+- answer (a detailed response)
+- sourceDocument (where it was found)
 
-For example, the array should look like this (but with your extracted questions):
-\`\`\`json
-[{"text": "Example question?", "type": "explicit", "confidence": 0.9, "answer": "Example answer", "sourceDocument": "Section 1"}]\`\`\`
-
-Return only the JSON array with your findings, no other text.`,
+Return only a properly formatted JSON array.`,
       inputVariables: ["text"]
     });
+
+    console.log("Created prompt template");
 
     const questions: ProcessedQuestion[] = [];
 
@@ -148,11 +146,13 @@ Return only the JSON array with your findings, no other text.`,
       try {
         console.log("Processing document chunk:", text.substring(0, 100) + "...");
         
+        console.log("Formatting prompt with text length:", text.length);
         const formattedPrompt = await prompt.format({ text });
-        console.log("Formatted prompt:", formattedPrompt);
+        console.log("Successfully formatted prompt");
         
+        console.log("Calling OpenAI with formatted prompt");
         const response = await this.openai.invoke(formattedPrompt);
-        console.log("Raw OpenAI response:", response);
+        console.log("Received response from OpenAI");
         
         if (!response.content) {
           console.log("Empty response content from OpenAI");
