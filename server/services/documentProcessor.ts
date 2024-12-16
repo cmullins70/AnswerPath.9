@@ -121,26 +121,18 @@ export class DocumentProcessor {
 
 {text}
 
-Analyze the text and return a JSON array of questions and requirements. Each item must follow this exact format:
+Analyze the text and return only a JSON array. Each object in the array must contain:
+1. A "text" field with the complete question or requirement
+2. A "type" field that is either "explicit" or "implicit"
+3. A "confidence" field with a number from 0-1
+4. An "answer" field with a detailed response
+5. A "sourceDocument" field indicating where it was found
 
-[
-  {
-    "text": "What are the system requirements?",
-    "type": "explicit",
-    "confidence": 0.95,
-    "answer": "The system requires...",
-    "sourceDocument": "Section 1.2"
-  }
-]
+For example, the array should look like this (but with your extracted questions):
+\`\`\`json
+[{"text": "Example question?", "type": "explicit", "confidence": 0.9, "answer": "Example answer", "sourceDocument": "Section 1"}]\`\`\`
 
-The response must be a valid JSON array with objects containing these exact fields:
-- text: The complete question or requirement
-- type: Must be either "explicit" or "implicit"
-- confidence: A number between 0 and 1
-- answer: A detailed professional answer
-- sourceDocument: The section where this was found
-
-Important: Return only the JSON array, no additional text or explanation.`,
+Return only the JSON array with your findings, no other text.`,
       inputVariables: ["text"]
     });
 
