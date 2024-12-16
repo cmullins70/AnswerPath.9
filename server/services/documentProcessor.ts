@@ -1,12 +1,12 @@
-import { Document } from "langchain/document";
-import { PDFLoader } from "langchain/document_loaders/fs/pdf";
-import { DocxLoader } from "langchain/document_loaders/fs/docx";
-import { CSVLoader } from "langchain/document_loaders/fs/csv";
+import { Document } from "@langchain/core/documents";
+import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
+import { DocxLoader } from "@langchain/community/document_loaders/fs/docx";
+import { CSVLoader } from "@langchain/community/document_loaders/fs/csv";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { OpenAIEmbeddings } from "@langchain/openai";
-import { MemoryVectorStore } from "langchain/vectorstores/memory";
-import { OpenAI } from "@langchain/openai";
-import { RetrievalQAChain } from "langchain/chains";
+import { MemoryVectorStore } from "@langchain/community/vectorstores/memory";
+import { ChatOpenAI } from "@langchain/openai";
+import { createRetrievalChain } from "langchain/chains/retrieval";
 import * as mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import * as fs from "fs/promises";
@@ -30,13 +30,16 @@ export class DocumentProcessor {
       throw new Error("OPENAI_API_KEY is required");
     }
 
-    this.openai = new OpenAI({
-      modelName: "gpt-4",
+    this.openai = new ChatOpenAI({
+      modelName: "gpt-4-1106-preview",
       temperature: 0.0,
+      maxTokens: 4096
     });
 
     this.embeddings = new OpenAIEmbeddings({
       modelName: "text-embedding-3-small",
+      stripNewLines: true,
+      batchSize: 512
     });
   }
 
