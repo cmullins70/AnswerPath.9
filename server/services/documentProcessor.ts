@@ -100,27 +100,47 @@ export class DocumentProcessor {
     if (!this.vectorStore) {
       throw new Error("Documents must be processed before extracting questions");
     }
+    
+    console.log("Starting question extraction process...");
+    console.log(`Processing ${docs.length} document chunks`);
 
     const questionExtractionPrompt = PromptTemplate.fromTemplate(`
-You are an AI assistant analyzing RFI documents. Extract questions from this content:
+You are an AI assistant analyzing RFI documents. Below is the content to analyze:
 
-{text}
+Content:
+{content}
 
-Format your response as a JSON array like this:
+Instructions:
+1. Extract explicit questions (direct queries marked with ? or numbered)
+2. Identify implicit questions (requirements needing responses)
+3. For each question found:
+   - Clearly state the question
+   - Note if it's explicit or implicit
+   - Include relevant context
+   - Provide a confidence score
+
+Format each question as a JSON object in an array with these fields:
+- text: the question text
+- type: "explicit" or "implicit"
+- confidence: number between 0.1 and 1.0
+- answer: brief preliminary answer
+- sourceDocument: relevant context from the document
+
+Response Format:
 [
   {
-    "text": "the actual question",
-    "type": "explicit or implicit",
-    "confidence": 0.9,
-    "answer": "preliminary answer",
-    "sourceDocument": "relevant context"
+    "text": "<question text>",
+    "type": "<explicit or implicit>",
+    "confidence": <number>,
+    "answer": "<preliminary answer>",
+    "sourceDocument": "<relevant context>"
   }
 ]
 `);
 
     const chain = RunnableSequence.from([
       {
-        text: (doc: Document) => doc.pageContent
+        content: (doc: Document) => doc.pageContent,
       },
       questionExtractionPrompt,
       this.openai,
