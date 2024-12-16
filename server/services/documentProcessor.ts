@@ -117,28 +117,30 @@ export class DocumentProcessor {
     }
 
     const prompt = new PromptTemplate({
-      template: `You are an expert at analyzing RFI documents. Analyze the text below and extract all questions and requirements.
+      template: `You are an expert at analyzing RFI documents. Your task is to extract questions and requirements from the following text:
 
-Below is the text to analyze:
 {text}
 
-Return a JSON array containing all questions and requirements you find. Format each item as follows:
-- text: The exact question or requirement text
-- type: Either "explicit" for direct questions or "implicit" for requirements
-- confidence: A number between 0 and 1 indicating certainty
-- answer: A detailed professional answer
-- sourceDocument: The section or context where found
+Analyze the text and return a JSON array of questions and requirements. Each item must follow this exact format:
 
-Follow this exact format in your response:
 [
   {
-    "text": <extracted text>,
-    "type": <"explicit" or "implicit">,
-    "confidence": <number>,
-    "answer": <answer text>,
-    "sourceDocument": <source text>
+    "text": "What are the system requirements?",
+    "type": "explicit",
+    "confidence": 0.95,
+    "answer": "The system requires...",
+    "sourceDocument": "Section 1.2"
   }
-]`,
+]
+
+The response must be a valid JSON array with objects containing these exact fields:
+- text: The complete question or requirement
+- type: Must be either "explicit" or "implicit"
+- confidence: A number between 0 and 1
+- answer: A detailed professional answer
+- sourceDocument: The section where this was found
+
+Important: Return only the JSON array, no additional text or explanation.`,
       inputVariables: ["text"]
     });
 
