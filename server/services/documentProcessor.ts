@@ -110,25 +110,22 @@ export class DocumentProcessor {
 
     const prompt = PromptTemplate.fromTemplate(
       "You are an expert at analyzing RFI (Request for Information) documents for sales professionals. " +
-      "Your task is to carefully extract and analyze questions and requirements from the following text:\n\n" +
+      "Please analyze this text and extract questions and requirements:\n\n" +
       "{text}\n\n" +
-      "Follow these rules to identify questions:\n" +
-      "1. Explicit questions: Direct questions marked with ? or using question words (what, how, when, etc.)\n" +
-      "2. Implicit requirements: Statements that need responses (e.g., 'Vendor must...', 'Describe your...', 'Provide details about...')\n" +
-      "3. Generate detailed, professional answers that:\n" +
-      "   - Are specific and actionable\n" +
-      "   - Include relevant technical details\n" +
-      "   - Maintain a professional tone\n" +
-      "   - Focus on value proposition and capabilities\n" +
-      "   - Demonstrate understanding of business requirements\n\n" +
-      "Return a JSON array with exactly this format (no other text):\n" +
-      '[{\n' +
-      '  "text": "the complete question or requirement text",\n' +
-      '  "type": "explicit" | "implicit",\n' +
-      '  "confidence": number between 0-1,\n' +
-      '  "answer": "detailed professional answer that addresses the specific requirement",\n' +
-      '  "sourceDocument": "relevant context where found"\n' +
-      '}]'
+      "Extract both explicit questions (ending with ? or using question words) and implicit requirements " +
+      "(statements starting with 'Vendor must', 'Describe your', 'Provide details', etc.).\n\n" +
+      "For each question or requirement:\n" +
+      "1. Extract the exact text\n" +
+      "2. Classify as 'explicit' for direct questions or 'implicit' for requirements\n" +
+      "3. Generate a professional, detailed answer\n" +
+      "4. Include the source context\n" +
+      "5. Assign a confidence score\n\n" +
+      "Format your response as a JSON array like this:\n" +
+      '[{"text": "What is your approach to data security?", ' +
+      '"type": "explicit", ' +
+      '"confidence": 0.95, ' +
+      '"answer": "Our approach to data security combines industry best practices with...", ' +
+      '"sourceDocument": "Section 2.1 - Security Requirements"}]'
     );
     const questions: ProcessedQuestion[] = [];
 
@@ -151,28 +148,31 @@ export class DocumentProcessor {
         }
 
         try {
-          // Handle different response content types
-          let contentStr = "";
-          if (typeof response.content === "string") {
-            contentStr = response.content;
-          } else if (Array.isArray(response.content)) {
-            contentStr = response.content[0].text;
-          } else if (typeof response.content === "object" && "text" in response.content) {
-            contentStr = response.content.text;
-          }
-          
-          console.log("Formatted response content:", contentStr);
-          
-          if (!contentStr) {
-            console.log("No valid content in response");
+          const content = response.content;
+          if (!content) {
+            console.log("Empty response from OpenAI");
             continue;
           }
 
-          const parsed = JSON.parse(contentStr) as ProcessedQuestion[];
-          console.log("Successfully parsed JSON response");
-          
+          // Extract the actual response content
+          const contentStr = typeof content === 'string' 
+            ? content 
+            : JSON.stringify(content);
+
+          console.log("Processing OpenAI response:", contentStr);
+
+          // Try to find and parse the JSON array in the response
+          let jsonStr = contentStr;
+          const jsonMatch = contentStr.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+            jsonStr = jsonMatch[0];
+          }
+
+          const parsed = JSON.parse(jsonStr) as ProcessedQuestion[];
+          console.log("Successfully parsed JSON array:", parsed);
+
           if (!Array.isArray(parsed)) {
-            console.log("Response is not an array:", parsed);
+            console.log("Parsed result is not an array:", parsed);
             continue;
           }
 
