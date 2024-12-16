@@ -152,6 +152,7 @@ export function registerRoutes(app: Express) {
   app.get("/api/questions/export", async (_req, res) => {
     try {
       const allQuestions = await db.select().from(questions);
+      console.log("Retrieved questions for export:", allQuestions);
       
       // Convert to CSV format
       const csvRows = [
@@ -159,27 +160,37 @@ export function registerRoutes(app: Express) {
         ["Question", "Type", "Confidence", "Answer", "Source Document"],
         // Data rows
         ...allQuestions.map(q => [
-          q.text,
-          q.type,
-          q.confidence.toString(),
-          q.answer,
-          q.sourceDocument
+          q.text || '',
+          q.type || '',
+          typeof q.confidence === 'number' ? (q.confidence * 100).toFixed(1) + '%' : 'N/A',
+          q.answer || '',
+          q.sourceDocument || ''
         ])
       ];
       
-      // Convert to CSV string
+      console.log("Formatted CSV rows:", csvRows);
+      
+      // Convert to CSV string with proper escaping
       const csvContent = csvRows
         .map(row => 
-          row.map(cell => 
-            `"${cell?.replace(/"/g, '""') || ''}"`)
+          row.map(cell => {
+            if (cell === null || cell === undefined) return '""';
+            const escaped = cell.toString().replace(/"/g, '""');
+            return `"${escaped}"`;
+          })
           .join(","))
         .join("\n");
+
+      console.log("Generated CSV content length:", csvContent.length);
 
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="questions.csv"');
       res.send(csvContent);
     } catch (error) {
       console.error("Failed to export questions:", error);
+      if (error instanceof Error) {
+        console.error("Error details:", error.message, error.stack);
+      }
       res.status(500).json({ error: "Failed to export questions" });
     }
   });
