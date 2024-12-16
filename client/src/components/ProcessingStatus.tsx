@@ -19,10 +19,13 @@ export function ProcessingStatus() {
   const processingDocuments = documents?.filter(doc => doc.status === 'processing') ?? [];
   
   const { data: status } = useQuery<ProcessingStatusType>({
-    queryKey: ["/api/processing/status"],
+    queryKey: ["/api/processing/status", processingDocuments[0]?.id],
     enabled: processingDocuments.length > 0,
-    queryFn: async () => {
-      const response = await fetch(`/api/processing/status?documentId=${processingDocuments[0].id}`);
+    queryFn: async ({ queryKey }) => {
+      const documentId = queryKey[1];
+      if (!documentId) return null;
+      
+      const response = await fetch(`/api/processing/status?documentId=${documentId}`);
       if (!response.ok) {
         throw new Error("Failed to fetch processing status");
       }
