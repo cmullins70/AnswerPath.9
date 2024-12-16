@@ -22,11 +22,10 @@ export function ProcessingStatus() {
     queryKey: ["/api/processing/status", processingDocuments[0]?.id],
     enabled: processingDocuments.length > 0,
     refetchInterval: (data) => {
-      // Keep polling until processing is complete
-      if (data?.currentStep === "complete" || data?.currentStep === "error") {
-        return false;
+      if (!data || (data.currentStep !== "complete" && data.currentStep !== "error")) {
+        return 1000; // Poll every second while processing
       }
-      return 1000; // Poll every second while processing
+      return false; // Stop polling when complete or error
     },
   });
 
@@ -86,13 +85,8 @@ export function ProcessingStatus() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Progress
-          value={
-            status
-              ? status.currentStep === "error"
-                ? 100
-                : status.progress
-              : 0
-          }
+          value={status?.progress || 0}
+          className={status?.currentStep === "error" ? "bg-red-200" : ""}
         />
         <span className="text-sm font-medium">
           {status?.progress || 0}%
@@ -103,9 +97,10 @@ export function ProcessingStatus() {
         {steps.map((step) => {
           const isActive = status?.currentStep === step.id;
           const isComplete = status?.completedSteps.includes(step.id);
+          const isError = status?.currentStep === "error";
 
           return (
-            <Card key={step.id}>
+            <Card key={step.id} className={isError ? "border-red-200" : ""}>
               <CardContent className="p-4">
                 <div className="flex items-center">
                   {isComplete ? (
@@ -125,35 +120,23 @@ export function ProcessingStatus() {
                           </TooltipTrigger>
                           <TooltipContent>
                             <p>{step.description}</p>
-                            {step.id === "extraction" && (
-                              <p>Handles multiple file formats and structures</p>
-                            )}
-                            {step.id === "questions" && (
-                              <p>Uses AI to identify both direct and indirect questions</p>
-                            )}
-                            {step.id === "analysis" && (
-                              <p>Links questions with relevant context and requirements</p>
-                            )}
-                            {step.id === "generation" && (
-                              <p>Generates accurate responses with confidence scores</p>
-                            )}
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {step.description}
+                      {isActive ? "In progress..." : step.description}
                     </p>
                   </div>
                   {isActive && (
-                    <span className="ml-auto text-sm text-blue-500 font-medium">
-                      In Progress...
+                    <span className="ml-auto text-sm text-blue-500 font-medium animate-pulse">
+                      Processing...
                     </span>
                   )}
-                  {status?.currentStep === "error" && step.id === "extraction" && (
+                  {isError && (
                     <div className="ml-auto flex flex-col items-end">
                       <span className="text-sm text-destructive font-medium">
-                        Processing Failed
+                        Error occurred
                       </span>
                       {status.error && (
                         <span className="text-xs text-muted-foreground mt-1">

@@ -30,10 +30,13 @@ export function DocumentUpload() {
       });
 
       if (!response.ok) {
-        throw new Error("Upload failed");
+        const error = await response.text();
+        throw new Error(error || "Upload failed");
       }
 
-      return response.json();
+      const result = await response.json();
+      setUploadProgress(25); // Show initial progress
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
