@@ -153,28 +153,30 @@ export function registerRoutes(app: Express) {
     try {
       console.log("Starting questions export...");
       
-      // First verify we can get questions at all
-      const questionCount = await db
-        .select({ count: sql`count(*)::integer` })
-        .from(questions)
-        .then(rows => Number(rows[0].count));
+      // Use raw SQL to handle type casting and NaN values properly
+      const rawQuery = sql`
+        SELECT 
+          text,
+          type,
+          CASE 
+            WHEN confidence IS NULL OR confidence::text = 'NaN' THEN 0
+            ELSE confidence::real
+          END as confidence,
+          COALESCE(answer, '') as answer,
+          source_document
+        FROM questions
+      `;
       
-      console.log(`Found ${questionCount} questions in database`);
+      console.log("Executing export query...");
+      const allQuestions = await db.execute(rawQuery);
+      console.log("Query executed successfully");
       
-      if (questionCount === 0) {
+      if (!allQuestions.length) {
+        console.log("No questions found in database");
         return res.status(404).json({ error: "No questions found to export" });
       }
 
-      // Get all questions with basic fields only
-      const allQuestions = await db
-        .select({
-          text: questions.text,
-          type: questions.type,
-          confidence: questions.confidence,
-          answer: questions.answer,
-          sourceDocument: questions.sourceDocument,
-        })
-        .from(questions);
+      console.log(`Retrieved ${allQuestions.length} questions from database`);
       
       console.log(`Retrieved ${allQuestions.length} questions from database`);
       
