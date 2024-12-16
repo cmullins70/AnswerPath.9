@@ -117,18 +117,32 @@ export class DocumentProcessor {
     }
 
     const prompt = new PromptTemplate({
-      template: `You are an expert at analyzing RFI documents. Analyze the following text and extract all questions and requirements:
+      template: `You are an expert at analyzing RFI documents. Analyze this text and extract all questions and requirements.
 
+Text to analyze:
 {text}
 
-For each question or requirement found, provide:
-1. The exact text of the question or requirement
-2. Classify it as "explicit" for direct questions or "implicit" for requirements
-3. A confidence score between 0 and 1
-4. A professional and detailed answer
-5. The source section where it was found
+For each question or requirement, return a JSON object with these exact fields:
+{
+  "text": "the complete question or requirement text",
+  "type": "explicit" or "implicit",
+  "confidence": number between 0-1,
+  "answer": "detailed professional answer that addresses the specific requirement",
+  "sourceDocument": "relevant context where found"
+}
 
-Format your response as a JSON array only, no additional text.`,
+Return a JSON array containing all found questions and requirements. Example:
+[
+  {
+    "text": "What security certifications does your company hold?",
+    "type": "explicit",
+    "confidence": 0.95,
+    "answer": "Our company maintains several industry-standard security certifications...",
+    "sourceDocument": "Section 2.1 - Security Requirements"
+  }
+]
+
+Important: Ensure all responses are properly formatted as JSON objects within an array.`,
       inputVariables: ["text"]
     });
 
@@ -157,38 +171,61 @@ Format your response as a JSON array only, no additional text.`,
 
         // Extract and parse the response
         try {
-          const contentStr = typeof response.content === 'string' 
+          console.log("Raw response content:", response.content);
+          
+          let contentStr = typeof response.content === 'string' 
             ? response.content 
             : JSON.stringify(response.content);
 
-          console.log("Processing OpenAI response:", contentStr);
-
-          // Try to find and parse the JSON array in the response
-          let jsonStr = contentStr;
+          // Try to extract JSON array if content contains other text
           const jsonMatch = contentStr.match(/\[[\s\S]*\]/);
           if (jsonMatch) {
-            jsonStr = jsonMatch[0];
+            contentStr = jsonMatch[0];
+            console.log("Extracted JSON array from response:", contentStr);
           }
 
-          const parsed = JSON.parse(jsonStr) as ProcessedQuestion[];
-          console.log("Successfully parsed JSON array:", parsed);
+          let parsed: ProcessedQuestion[];
+          try {
+            parsed = JSON.parse(contentStr);
+            console.log("Successfully parsed JSON:", parsed);
+          } catch (parseError) {
+            console.error("Failed to parse JSON:", parseError);
+            console.log("Content that failed to parse:", contentStr);
+            continue;
+          }
 
           if (!Array.isArray(parsed)) {
-            console.log("Parsed result is not an array:", parsed);
+            console.log("Parsed result is not an array, got:", typeof parsed);
             continue;
           }
 
           const valid = parsed.filter(q => {
-            const isValid = 
-              typeof q.text === 'string' && q.text.length > 0 &&
-              (q.type === 'explicit' || q.type === 'implicit') &&
-              typeof q.confidence === 'number' &&
-              q.confidence >= 0 && q.confidence <= 1 &&
-              typeof q.answer === 'string' &&
-              typeof q.sourceDocument === 'string';
+            const validationErrors = [];
             
+            if (!q.text || typeof q.text !== 'string' || q.text.length === 0) {
+              validationErrors.push("Invalid or missing text");
+            }
+            if (q.type !== 'explicit' && q.type !== 'implicit') {
+              validationErrors.push(`Invalid type: ${q.type}`);
+            }
+            if (typeof q.confidence !== 'number' || q.confidence < 0 || q.confidence > 1) {
+              validationErrors.push(`Invalid confidence: ${q.confidence}`);
+            }
+            if (!q.answer || typeof q.answer !== 'string') {
+              validationErrors.push("Invalid or missing answer");
+            }
+            if (!q.sourceDocument || typeof q.sourceDocument !== 'string') {
+              validationErrors.push("Invalid or missing sourceDocument");
+            }
+
+            const isValid = validationErrors.length === 0;
             if (!isValid) {
-              console.log("Invalid question object:", q);
+              console.log("Validation errors for question:", {
+                question: q,
+                errors: validationErrors
+              });
+            } else {
+              console.log("Valid question found:", q);
             }
             
             return isValid;
