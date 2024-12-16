@@ -138,17 +138,34 @@ export class DocumentProcessor {
     console.log("Starting question extraction process...");
     console.log(`Processing ${docs.length} document chunks`);
 
-    const template = `Analyze this text from an RFI document: {text}
+    const template = `You are an expert at analyzing RFI (Request for Information) documents.
+Analyze the following text carefully and extract any questions or requirements that need responses: {text}
 
-Extract both explicit questions (marked with ?) and implicit questions (requirements needing responses).
+Instructions:
+1. Look for explicit questions (ending with ? or clearly asking for information)
+2. Identify implicit questions (statements that require a response, like "Vendor must provide..." or "Describe your approach to...")
+3. For each question or requirement:
+   - Capture the exact text
+   - Determine if it's explicit (has a question mark or clear question words) or implicit (requirements/statements needing response)
+   - Generate a draft answer based on best practices
+   - Include the relevant section or context
 
-Return only a JSON array with this format:
+Return ONLY a JSON array with this format (no other text):
 [{
-  "text": "The actual question found",
+  "text": "The complete question or requirement text",
   "type": "explicit or implicit",
-  "confidence": "number between 0-1",
-  "answer": "Draft answer based on context",
-  "sourceDocument": "Section reference"
+  "confidence": "number between 0-1 indicating certainty",
+  "answer": "Draft answer addressing the question/requirement",
+  "sourceDocument": "Section or context where this was found"
+}]
+
+Example format:
+[{
+  "text": "What is your approach to data security?",
+  "type": "explicit",
+  "confidence": 0.95,
+  "answer": "Our approach to data security involves multiple layers of protection...",
+  "sourceDocument": "Section 3.2 - Security Requirements"
 }]`;
 
     const questionExtractionPrompt = PromptTemplate.fromTemplate(template);
@@ -162,7 +179,7 @@ Return only a JSON array with this format:
         
         try {
           const text = doc.pageContent.trim();
-          if (!text || text.length < 10) {
+          if (!text || text.length < 50) { // Increased minimum length
             console.warn("Skipping chunk - insufficient content length:", text.length);
             continue;
           }
@@ -171,8 +188,15 @@ Return only a JSON array with this format:
           console.log("Content preview:", text.slice(0, 100));
           
           const formattedPrompt = await questionExtractionPrompt.format({ text });
+          console.log("Sending prompt to OpenAI:", formattedPrompt);
+          
           const response = await this.openai.invoke(formattedPrompt);
-          console.log("OpenAI Response:", response);
+          console.log("OpenAI Raw Response:", response);
+          
+          if (!response.content) {
+            console.error("OpenAI response is missing content");
+            continue;
+          }
           
           const responseText = response.content as string;
           console.log("Extracted response text:", responseText);
