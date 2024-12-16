@@ -156,6 +156,7 @@ export function registerRoutes(app: Express) {
 async function processDocument(documentId: number, file: Express.Multer.File) {
   try {
     console.log(`Starting processing for document ${documentId}`);
+    console.log(`File details: name=${file.originalname}, type=${file.mimetype}, size=${file.size} bytes`);
     
     // Initialize processing status
     processingStatus.set(documentId, {

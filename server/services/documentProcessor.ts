@@ -23,17 +23,21 @@ export class DocumentProcessor {
   private vectorStore: MemoryVectorStore | null = null;
 
   constructor() {
-    if (!process.env.OPENAI_API_KEY) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
       throw new Error("OpenAI API key is not configured");
     }
 
     this.openai = new ChatOpenAI({
       modelName: "gpt-3.5-turbo",
-      temperature: 0,
+      temperature: 0.3,
       maxTokens: 2000,
+      openAIApiKey: apiKey,
     });
 
-    this.embeddings = new OpenAIEmbeddings();
+    this.embeddings = new OpenAIEmbeddings({
+      openAIApiKey: apiKey,
+    });
   }
 
   async processDocument(file: Express.Multer.File): Promise<Document[]> {
@@ -104,32 +108,28 @@ export class DocumentProcessor {
       throw new Error("Documents must be processed before extracting questions");
     }
 
-    const template = new PromptTemplate({
-      template: `You are an expert at analyzing RFI (Request for Information) documents for sales professionals.
-Your task is to carefully extract and analyze questions and requirements from the following text:
-
-{text}
-
-Follow these rules to identify questions:
-1. Explicit questions: Direct questions marked with ? or using question words (what, how, when, etc.)
-2. Implicit requirements: Statements that need responses (e.g., "Vendor must...", "Describe your...", "Provide details about...")
-3. Generate detailed, professional answers that:
-   - Are specific and actionable
-   - Include relevant technical details
-   - Maintain a professional tone
-   - Focus on value proposition and capabilities
-   - Demonstrate understanding of business requirements
-
-Return a JSON array with exactly this format (no other text):
-[{
-  "text": "the complete question or requirement text",
-  "type": "explicit" | "implicit",
-  "confidence": number between 0-1,
-  "answer": "detailed professional answer that addresses the specific requirement",
-  "sourceDocument": "relevant context where found"
-}]`,
-      inputVariables: ["text"]
-    });
+    const prompt = PromptTemplate.fromTemplate(
+      "You are an expert at analyzing RFI (Request for Information) documents for sales professionals. " +
+      "Your task is to carefully extract and analyze questions and requirements from the following text:\n\n" +
+      "{text}\n\n" +
+      "Follow these rules to identify questions:\n" +
+      "1. Explicit questions: Direct questions marked with ? or using question words (what, how, when, etc.)\n" +
+      "2. Implicit requirements: Statements that need responses (e.g., 'Vendor must...', 'Describe your...', 'Provide details about...')\n" +
+      "3. Generate detailed, professional answers that:\n" +
+      "   - Are specific and actionable\n" +
+      "   - Include relevant technical details\n" +
+      "   - Maintain a professional tone\n" +
+      "   - Focus on value proposition and capabilities\n" +
+      "   - Demonstrate understanding of business requirements\n\n" +
+      "Return a JSON array with exactly this format (no other text):\n" +
+      '[{\n' +
+      '  "text": "the complete question or requirement text",\n' +
+      '  "type": "explicit" | "implicit",\n' +
+      '  "confidence": number between 0-1,\n' +
+      '  "answer": "detailed professional answer that addresses the specific requirement",\n' +
+      '  "sourceDocument": "relevant context where found"\n' +
+      '}]'
+    );
     const questions: ProcessedQuestion[] = [];
 
     for (const doc of docs) {
@@ -137,8 +137,13 @@ Return a JSON array with exactly this format (no other text):
       if (!text || text.length < 20) continue;
 
       try {
+        console.log("Processing document chunk:", text.substring(0, 100) + "...");
+        
         const formattedPrompt = await prompt.format({ text });
+        console.log("Sending formatted prompt to OpenAI");
+        
         const response = await this.openai.invoke(formattedPrompt);
+        console.log("Received response from OpenAI");
         
         if (!response.content) {
           console.log("Empty response from OpenAI");
@@ -146,31 +151,55 @@ Return a JSON array with exactly this format (no other text):
         }
 
         try {
-          const content = Array.isArray(response.content) 
-            ? response.content[0].text 
-            : response.content;
-            
-          console.log("Raw OpenAI response:", content);
-          const parsed = JSON.parse(content) as ProcessedQuestion[];
+          // Handle different response content types
+          let contentStr = "";
+          if (typeof response.content === "string") {
+            contentStr = response.content;
+          } else if (Array.isArray(response.content)) {
+            contentStr = response.content[0].text;
+          } else if (typeof response.content === "object" && "text" in response.content) {
+            contentStr = response.content.text;
+          }
+          
+          console.log("Formatted response content:", contentStr);
+          
+          if (!contentStr) {
+            console.log("No valid content in response");
+            continue;
+          }
+
+          const parsed = JSON.parse(contentStr) as ProcessedQuestion[];
+          console.log("Successfully parsed JSON response");
           
           if (!Array.isArray(parsed)) {
             console.log("Response is not an array:", parsed);
             continue;
           }
 
-          const valid = parsed.filter(q => 
-            typeof q.text === 'string' && q.text.length > 0 &&
-            (q.type === 'explicit' || q.type === 'implicit') &&
-            typeof q.confidence === 'number' &&
-            q.confidence >= 0 && q.confidence <= 1 &&
-            typeof q.answer === 'string' &&
-            typeof q.sourceDocument === 'string'
-          );
+          const valid = parsed.filter(q => {
+            const isValid = 
+              typeof q.text === 'string' && q.text.length > 0 &&
+              (q.type === 'explicit' || q.type === 'implicit') &&
+              typeof q.confidence === 'number' &&
+              q.confidence >= 0 && q.confidence <= 1 &&
+              typeof q.answer === 'string' &&
+              typeof q.sourceDocument === 'string';
+            
+            if (!isValid) {
+              console.log("Invalid question object:", q);
+            }
+            
+            return isValid;
+          });
 
           console.log(`Extracted ${valid.length} valid questions from chunk`);
           questions.push(...valid);
         } catch (e) {
           console.error("Failed to parse OpenAI response:", e);
+          if (e instanceof Error) {
+            console.error("Error details:", e.message);
+            console.error("Stack trace:", e.stack);
+          }
         }
       } catch (e) {
         console.error("Failed to process document chunk:", e);
