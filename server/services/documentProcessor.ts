@@ -4,9 +4,11 @@ import { DocxLoader } from "@langchain/community/document_loaders/fs/docx";
 import { CSVLoader } from "@langchain/community/document_loaders/fs/csv";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { OpenAIEmbeddings } from "@langchain/openai";
-import { MemoryVectorStore } from "@langchain/community/vectorstores/memory";
+import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { ChatOpenAI } from "@langchain/openai";
-import { createRetrievalChain } from "langchain/chains/retrieval";
+import { RunnableSequence } from "@langchain/core/runnables";
+import { StringOutputParser } from "@langchain/core/output_parsers";
+import { PromptTemplate } from "@langchain/core/prompts";
 import * as mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import * as fs from "fs/promises";
@@ -95,40 +97,48 @@ export class DocumentProcessor {
       throw new Error("Documents must be processed before extracting questions");
     }
 
-    const chain = RetrievalQAChain.fromLLM(
-      this.openai,
-      this.vectorStore.asRetriever(),
-    );
+    const retriever = this.vectorStore.asRetriever();
 
-    const questionExtractionPrompt = `
+    const questionExtractionPrompt = PromptTemplate.fromTemplate(`
     Analyze the following document and:
     1. Identify explicit questions (direct queries)
     2. Recognize implicit questions (implied information requests)
     3. For each question:
        - Determine if it's explicit or implicit
-       - Generate a detailed answer
+       - Generate a detailed answer using the context
        - Assign a confidence score (0-1)
 
-    Return the results in this format:
+    Format the response as a valid JSON array with this structure:
     [
       {
         "text": "the question",
-        "type": "explicit" or "implicit",
+        "type": "explicit or implicit",
         "confidence": 0.95,
         "answer": "detailed answer",
         "sourceDocument": "relevant section from source"
       }
     ]
-    `;
+
+    Document: {context}
+    `);
+
+    const chain = RunnableSequence.from([
+      {
+        context: (input: string) => input,
+      },
+      questionExtractionPrompt,
+      this.openai,
+      new StringOutputParser(),
+    ]);
 
     const combinedText = docs.map(doc => doc.pageContent).join("\n\n");
-    const response = await this.openai.invoke(questionExtractionPrompt + "\n\nDocument:\n" + combinedText);
     
     try {
+      const response = await chain.invoke(combinedText);
       const questions = JSON.parse(response);
       return questions as ProcessedQuestion[];
     } catch (error) {
-      console.error("Failed to parse questions:", error);
+      console.error("Failed to process questions:", error);
       return [];
     }
   }
