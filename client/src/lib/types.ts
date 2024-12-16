@@ -10,6 +10,7 @@ export type ProcessingStatusType = {
   currentStep: string;
   completedSteps: string[];
   progress: number;
+  error?: string;
 };
 
 export type QuestionType = {

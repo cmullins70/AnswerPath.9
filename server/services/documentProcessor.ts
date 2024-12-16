@@ -29,19 +29,24 @@ export class DocumentProcessor {
 
   constructor() {
     if (!process.env.OPENAI_API_KEY) {
-      throw new Error("OPENAI_API_KEY is required");
+      throw new Error("OpenAI API key is not configured. Please provide a valid API key.");
     }
 
-    this.openai = new ChatOpenAI({
-      modelName: "gpt-3.5-turbo",
-      temperature: 0,
-      maxTokens: 2000
-    });
+    try {
+      this.openai = new ChatOpenAI({
+        modelName: "gpt-3.5-turbo",
+        temperature: 0,
+        maxTokens: 2000
+      });
 
-    this.embeddings = new OpenAIEmbeddings({
-      modelName: "text-embedding-ada-002",
-      stripNewLines: true
-    });
+      this.embeddings = new OpenAIEmbeddings({
+        modelName: "text-embedding-ada-002",
+        stripNewLines: true
+      });
+    } catch (error) {
+      console.error("Failed to initialize OpenAI services:", error);
+      throw new Error("Failed to initialize AI services. Please check your API key configuration.");
+    }
   }
 
   async processDocument(file: Express.Multer.File): Promise<Document[]> {

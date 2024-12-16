@@ -174,17 +174,30 @@ async function processDocument(documentId: number, file: Express.Multer.File) {
     });
   } catch (error) {
     console.error(`Failed to process document ${documentId}:`, error);
+    
+    let errorMessage = "An unexpected error occurred";
+    if (error instanceof Error) {
+      if (error.message.includes("API key")) {
+        errorMessage = "OpenAI API authentication failed. Please check the API key configuration.";
+      } else if (error.message.includes("quota")) {
+        errorMessage = "OpenAI API quota exceeded. Please check your usage limits.";
+      } else {
+        errorMessage = error.message;
+      }
+    }
+
     processingStatus.set(documentId, {
       currentStep: "error",
       completedSteps: [],
-      progress: 0
+      progress: 0,
+      error: errorMessage
     });
 
     await db
       .update(documents)
       .set({ 
         status: "error", 
-        metadata: { error: error instanceof Error ? error.message : "Unknown error occurred" } 
+        metadata: { error: errorMessage } 
       })
       .where(eq(documents.id, documentId));
   }

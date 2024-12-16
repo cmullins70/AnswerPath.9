@@ -133,9 +133,16 @@ export function ProcessingStatus() {
                     </span>
                   )}
                   {status?.currentStep === "error" && step.id === "extraction" && (
-                    <span className="ml-auto text-sm text-destructive font-medium">
-                      Processing Failed
-                    </span>
+                    <div className="ml-auto flex flex-col items-end">
+                      <span className="text-sm text-destructive font-medium">
+                        Processing Failed
+                      </span>
+                      {status.error && (
+                        <span className="text-xs text-muted-foreground mt-1">
+                          {status.error}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               </CardContent>
