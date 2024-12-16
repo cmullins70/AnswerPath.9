@@ -35,6 +35,11 @@ export function ProcessingStatus() {
 
   const steps = [
     {
+      id: "preparation",
+      label: "Preparation",
+      description: "Preparing document for processing"
+    },
+    {
       id: "extraction",
       label: "Content Extraction",
       description: "Converting document contents into processable text"

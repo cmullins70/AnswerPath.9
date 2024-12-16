@@ -28,6 +28,7 @@ const processingStatus = new Map<number, {
   currentStep: string;
   completedSteps: string[];
   progress: number;
+  error?: string;
 }>();
 
 export function registerRoutes(app: Express) {
@@ -140,12 +141,21 @@ async function processDocument(documentId: number, file: Express.Multer.File) {
   try {
     console.log(`Starting processing for document ${documentId}`);
     
-    // Update status to extraction
+    // Initialize processing status
     processingStatus.set(documentId, {
-      currentStep: "extraction",
+      currentStep: "preparation",
       completedSteps: [],
-      progress: 25
+      progress: 0
     });
+
+    // Update status to extraction
+    setTimeout(() => {
+      processingStatus.set(documentId, {
+        currentStep: "extraction",
+        completedSteps: ["preparation"],
+        progress: 25
+      });
+    }, 1000);
 
     // Process the document
     console.log("Extracting document content...");
