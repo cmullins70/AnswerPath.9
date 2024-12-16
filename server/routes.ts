@@ -153,59 +153,57 @@ export function registerRoutes(app: Express) {
     try {
       console.log("Starting questions export...");
       
-      // Direct query with explicit error handling
-      const result = await db.select({
-        text: sql`COALESCE(${questions.text}::text, '')`,
-        type: sql`COALESCE(${questions.type}::text, 'unknown')`,
-        confidence: sql`CASE 
-          WHEN ${questions.confidence} IS NULL THEN 0
-          WHEN ${questions.confidence}::text = 'NaN' THEN 0
-          ELSE ${questions.confidence}::float
-        END`,
-        answer: sql`COALESCE(${questions.answer}::text, '')`,
-        sourceDocument: sql`COALESCE(${questions.sourceDocument}::text, '')`,
-      })
-      .from(questions);
+      // Simple query to get raw data
+      const rawQuestions = await db.select()
+        .from(questions)
+        .execute();
+      
+      console.log(`Retrieved ${rawQuestions.length} questions from database`);
+      
+      if (!rawQuestions.length) {
+        return res.status(404).json({ error: "No questions found to export" });
+      }
 
-      console.log("Query result:", JSON.stringify(result, null, 2));
+      // Process each row carefully with type checking
+      const processedRows = rawQuestions.map((row, index) => {
+        try {
+          const confidence = parseFloat(row.confidence?.toString() || '0');
+          return [
+            String(row.text || '').trim(),
+            String(row.type || 'unknown').trim(),
+            `${(isNaN(confidence) ? 0 : confidence * 100).toFixed(1)}%`,
+            String(row.answer || '').trim(),
+            String(row.source_document || '').trim()
+          ];
+        } catch (error) {
+          console.error(`Error processing row ${index}:`, error);
+          // Return a safe fallback row
+          return ['Error processing question', 'unknown', '0%', '', ''];
+        }
+      });
 
-      // Transform the results with proper type handling
-      const processedQuestions = result.map(row => ({
-        text: row.text || '',
-        type: row.type || 'unknown',
-        confidence: row.confidence === null || isNaN(row.confidence) ? 0 : row.confidence,
-        answer: row.answer || '',
-        sourceDocument: row.sourceDocument || ''
-      }));
-
-      console.log(`Successfully processed ${processedQuestions.length} questions`);
-
-      // Convert to CSV format with error handling
+      // Add header row
       const csvRows = [
         ["Question", "Type", "Confidence", "Answer", "Source Document"],
-        ...processedQuestions.map(q => [
-          q.text.trim(),
-          q.type.trim(),
-          `${(q.confidence * 100).toFixed(1)}%`,
-          q.answer.trim(),
-          q.sourceDocument.trim()
-        ])
+        ...processedRows
       ];
-      
-      console.log(`Formatted ${csvRows.length - 1} data rows`);
-      
-      // Convert to CSV string with proper escaping
+
+      // Generate CSV with error handling for each cell
       const csvContent = csvRows
         .map(row => 
           row.map(cell => {
-            if (cell === null || cell === undefined) return '""';
-            const escaped = cell.toString().replace(/"/g, '""');
-            return `"${escaped}"`;
-          })
-          .join(","))
-        .join("\n");
+            try {
+              const escaped = (cell || '').toString().replace(/"/g, '""');
+              return `"${escaped}"`;
+            } catch (error) {
+              console.error('Error escaping cell:', error);
+              return '""';
+            }
+          }).join(',')
+        )
+        .join('\n');
 
-      console.log(`Generated CSV content (${csvContent.length} bytes)`);
+      console.log(`Successfully generated CSV with ${csvRows.length - 1} data rows`);
 
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="questions.csv"');
