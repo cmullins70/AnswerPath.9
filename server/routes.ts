@@ -153,79 +153,105 @@ export function registerRoutes(app: Express) {
     try {
       console.log("Starting questions export...");
       
-      // Use a raw SQL query with explicit type casting
-      const rawQuestions = await db.execute(sql`
-        SELECT 
-          COALESCE(text, '') as text,
-          COALESCE(type, 'unknown') as type,
-          COALESCE(CASE 
-            WHEN confidence IS NULL OR confidence::text = 'NaN' 
-            THEN 0 
-            ELSE confidence::float 
-          END, 0) as confidence,
-          COALESCE(answer, '') as answer,
-          COALESCE("sourceDocument", '') as source_document
-        FROM questions
-      `);
+      // First verify we can get questions at all
+      const questionCount = await db
+        .select({ count: sql`count(*)::integer` })
+        .from(questions)
+        .then(rows => Number(rows[0].count));
       
-      console.log('Raw query result:', rawQuestions);
+      console.log(`Found ${questionCount} questions in database`);
       
-      if (!Array.isArray(rawQuestions) || !rawQuestions.length) {
-        console.log('No questions found or invalid result structure');
+      if (questionCount === 0) {
         return res.status(404).json({ error: "No questions found to export" });
       }
 
-      // Process each row with strict type checking
-      const processedRows = rawQuestions.map((row: any, index: number) => {
+      // Get all questions with basic fields only
+      const allQuestions = await db
+        .select({
+          text: questions.text,
+          type: questions.type,
+          confidence: questions.confidence,
+          answer: questions.answer,
+          sourceDocument: questions.sourceDocument,
+        })
+        .from(questions);
+      
+      console.log(`Retrieved ${allQuestions.length} questions from database`);
+      
+      // Process rows with careful type checking and error handling
+      const processedRows = allQuestions.map((q, idx) => {
         try {
-          // Ensure we have a valid number for confidence
-          const confidenceValue = typeof row.confidence === 'number' ? row.confidence : 0;
+          // Ensure all fields are strings or properly formatted
+          const text = q.text || '';
+          const type = q.type || 'unknown';
+          const confidence = typeof q.confidence === 'number' && !isNaN(q.confidence) 
+            ? q.confidence 
+            : 0;
+          const answer = q.answer || '';
+          const source = q.sourceDocument || '';
           
+          console.log(`Processing row ${idx}:`, {
+            text: text.substring(0, 50) + '...',
+            type,
+            confidence,
+            hasAnswer: !!answer,
+            hasSource: !!source
+          });
+
           return [
-            String(row.text).trim(),
-            String(row.type).trim(),
-            `${(confidenceValue * 100).toFixed(1)}%`,
-            String(row.answer).trim(),
-            String(row.source_document).trim()
+            text.trim(),
+            type.trim(),
+            `${(confidence * 100).toFixed(1)}%`,
+            answer.trim(),
+            source.trim()
           ];
-        } catch (error) {
-          console.error(`Error processing row ${index}:`, error);
-          return ['Error processing question', 'unknown', '0%', '', ''];
+        } catch (err) {
+          console.error(`Error processing row ${idx}:`, err);
+          return ['Error processing row', 'unknown', '0%', '', ''];
         }
       });
 
-      // Add header row
+      console.log(`Successfully processed ${processedRows.length} rows`);
+
+      // Build CSV with headers
       const csvRows = [
-        ["Question", "Type", "Confidence", "Answer", "Source Document"],
+        ['Question', 'Type', 'Confidence', 'Answer', 'Source Document'],
         ...processedRows
       ];
 
-      // Generate CSV with error handling for each cell
+      // Convert to CSV string with careful error handling
       const csvContent = csvRows
         .map(row => 
           row.map(cell => {
             try {
-              const escaped = (cell || '').toString().replace(/"/g, '""');
+              // Handle null/undefined and escape quotes
+              const value = (cell ?? '').toString();
+              const escaped = value.replace(/"/g, '""');
               return `"${escaped}"`;
-            } catch (error) {
-              console.error('Error escaping cell:', error);
+            } catch (err) {
+              console.error('Error escaping cell:', err);
               return '""';
             }
           }).join(',')
         )
         .join('\n');
 
-      console.log(`Successfully generated CSV with ${csvRows.length - 1} data rows`);
-
+      console.log(`Generated CSV content (${csvContent.length} bytes)`);
+      
+      // Set headers and send response
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="questions.csv"');
       res.send(csvContent);
       
       console.log("Export completed successfully");
     } catch (error) {
-      console.error("Failed to export questions:", error);
+      console.error("Export failed:", error);
       if (error instanceof Error) {
-        console.error("Full error details:", error.message, error.stack);
+        console.error("Error details:", {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
       }
       res.status(500).json({ error: "Failed to export questions" });
     }
