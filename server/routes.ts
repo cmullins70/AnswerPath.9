@@ -151,20 +151,30 @@ export function registerRoutes(app: Express) {
 
   app.get("/api/questions/export", async (_req, res) => {
     try {
+      console.log("Starting questions export...");
+      
+      // First check if we have any questions
+      const count = await db
+        .select({ count: sql`count(*)` })
+        .from(questions)
+        .then(rows => Number(rows[0].count));
+      
+      console.log(`Found ${count} questions to export`);
+      
+      if (count === 0) {
+        return res.status(404).json({ error: "No questions found to export" });
+      }
+
+      // Fetch questions with explicit type casting
       const allQuestions = await db.select({
-        id: questions.id,
-        text: questions.text,
-        type: questions.type,
-        confidence: questions.confidence,
-        answer: questions.answer,
-        sourceDocument: questions.sourceDocument,
+        text: sql<string>`text::text`,
+        type: sql<string>`type::text`,
+        confidence: sql<number>`COALESCE(confidence::float, 0)`,
+        answer: sql<string>`COALESCE(answer::text, '')`,
+        sourceDocument: sql<string>`COALESCE(source_document::text, '')`,
       }).from(questions);
       
-      console.log("Retrieved questions for export:", allQuestions);
-      
-      if (!Array.isArray(allQuestions)) {
-        throw new Error("Failed to retrieve questions from database");
-      }
+      console.log(`Successfully retrieved ${allQuestions.length} questions`);
       
       // Convert to CSV format
       const csvRows = [
@@ -180,7 +190,7 @@ export function registerRoutes(app: Express) {
         ])
       ];
       
-      console.log("Formatted CSV rows:", csvRows);
+      console.log(`Formatted ${csvRows.length - 1} data rows`);
       
       // Convert to CSV string with proper escaping
       const csvContent = csvRows
@@ -193,11 +203,13 @@ export function registerRoutes(app: Express) {
           .join(","))
         .join("\n");
 
-      console.log("Generated CSV content length:", csvContent.length);
+      console.log(`Generated CSV content (${csvContent.length} bytes)`);
 
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="questions.csv"');
       res.send(csvContent);
+      
+      console.log("Export completed successfully");
     } catch (error) {
       console.error("Failed to export questions:", error);
       if (error instanceof Error) {
