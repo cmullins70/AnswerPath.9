@@ -142,11 +142,23 @@ export function registerRoutes(app: Express) {
 
   app.get("/api/contexts", async (_req, res) => {
     try {
+      console.log("Fetching all contexts");
       const allContexts = await db.select().from(contexts);
+      console.log("Found contexts:", allContexts);
       res.json(allContexts);
     } catch (error) {
       console.error("Failed to fetch contexts:", error);
-      res.status(500).json({ error: "Failed to fetch contexts" });
+      if (error instanceof Error) {
+        console.error("Error details:", {
+          message: error.message,
+          name: error.name,
+          stack: error.stack
+        });
+      }
+      res.status(500).json({ 
+        error: "Failed to fetch contexts",
+        details: error instanceof Error ? error.message : "Unknown error" 
+      });
     }
   });
 
@@ -168,32 +180,6 @@ export function registerRoutes(app: Express) {
   app.delete("/api/contexts/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-  app.post("/api/contexts/scrape", async (req, res) => {
-    try {
-      const { url } = req.body;
-      
-      if (!url || !webScraper.validateUrl(url)) {
-        return res.status(400).json({ error: "Invalid URL provided" });
-      }
-
-      const { title, content } = await webScraper.scrapeWebsite(url);
-
-      const [context] = await db.insert(contexts).values({
-        title,
-        content,
-        type: "website",
-        metadata: { url },
-      }).returning();
-
-      res.json(context);
-    } catch (error) {
-      console.error("Failed to scrape website:", error);
-      res.status(500).json({ 
-        error: "Failed to scrape website",
-        details: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
       if (isNaN(id)) {
         return res.status(400).json({ error: "Invalid context ID" });
       }
@@ -205,25 +191,48 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  app.post("/api/scrape", async (req, res) => {
+  app.post("/api/contexts/scrape", async (req, res) => {
     try {
-      const url = req.body.url;
-      if (!url) {
-        return res.status(400).json({ error: "URL is required" });
+      console.log("Received scrape request:", req.body);
+      const { url } = req.body;
+      
+      if (!url || !webScraper.validateUrl(url)) {
+        console.log("Invalid URL provided:", url);
+        return res.status(400).json({ error: "Invalid URL provided" });
       }
-      const scrapedData = await webScraper.scrape(url);
+
+      console.log("Scraping website:", url);
+      const { title, content } = await webScraper.scrapeWebsite(url);
+      console.log("Successfully scraped website. Title:", title, "Content length:", content.length);
+
+      console.log("Inserting context into database");
       const [context] = await db.insert(contexts).values({
-        title: url,
-        content: scrapedData,
-        type: "webpage",
-        metadata: {},
+        title,
+        content,
+        type: "website",
+        metadata: { url },
+        createdAt: new Date(),
+        updatedAt: new Date(),
       }).returning();
+
+      console.log("Successfully created context:", context);
       res.json(context);
     } catch (error) {
-      console.error("Web scraping failed:", error);
-      res.status(500).json({ error: "Web scraping failed" });
+      console.error("Failed to scrape website:", error);
+      if (error instanceof Error) {
+        console.error("Error details:", {
+          message: error.message,
+          name: error.name,
+          stack: error.stack
+        });
+      }
+      res.status(500).json({ 
+        error: "Failed to scrape website",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
     }
   });
+  
 
 
   app.get("/api/questions/export", async (_req, res) => {
