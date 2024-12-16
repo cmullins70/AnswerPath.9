@@ -104,34 +104,29 @@ export class DocumentProcessor {
     console.log("Starting question extraction process...");
     console.log(`Processing ${docs.length} document chunks`);
 
-    const questionExtractionPrompt = PromptTemplate.fromTemplate(`
-You are an AI assistant analyzing RFI documents. Below is the content to analyze:
-
-Content:
-{content}
-
-Instructions:
-1. Extract explicit questions (direct queries marked with ? or numbered)
-2. Identify implicit questions (requirements needing responses)
-3. For each question found:
-   - Clearly state the question
-   - Note if it's explicit or implicit
-   - Include relevant context
-   - Provide a confidence score
-
-Format your response exactly as a JSON array containing objects with these fields:
-[
-  {
-    "text": "Example: What are the system requirements?",
-    "type": "explicit",
-    "confidence": 0.9,
-    "answer": "Example: The system requires...",
-    "sourceDocument": "Example: Section 2.1: System Requirements..."
-  }
-]
-
-Note: Only respond with valid JSON, no additional text.
-`);
+    const questionExtractionPrompt = PromptTemplate.fromTemplate(
+      "You are an AI assistant analyzing RFI documents. Below is the content to analyze:\n\n" +
+      "Content:\n{content}\n\n" +
+      "Instructions:\n" +
+      "1. Extract explicit questions (direct queries marked with ? or numbered)\n" +
+      "2. Identify implicit questions (requirements needing responses)\n" +
+      "3. For each question found:\n" +
+      "   - Clearly state the question\n" +
+      "   - Note if it's explicit or implicit\n" +
+      "   - Include relevant context\n" +
+      "   - Provide a confidence score\n\n" +
+      "Format your response as a JSON array with these fields:\n" +
+      "[\n" +
+      "  {\n" +
+      '    "text": "<the question text>",\n' +
+      '    "type": "explicit",\n' +
+      '    "confidence": 0.9,\n' +
+      '    "answer": "<answer text>",\n' +
+      '    "sourceDocument": "<relevant context>"\n' +
+      "  }\n" +
+      "]\n\n" +
+      "Only respond with valid JSON, no additional text."
+    );
 
     try {
       const questions: ProcessedQuestion[] = [];
