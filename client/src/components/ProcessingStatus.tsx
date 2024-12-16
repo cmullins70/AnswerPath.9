@@ -21,6 +21,7 @@ export function ProcessingStatus() {
   const { data: status } = useQuery<ProcessingStatusType>({
     queryKey: ["/api/processing/status", processingDocuments[0]?.id],
     enabled: processingDocuments.length > 0,
+    refetchInterval: processingDocuments.length > 0 ? 1000 : false, // Poll every second while processing
   });
 
   const steps = [
@@ -46,15 +47,30 @@ export function ProcessingStatus() {
     },
   ];
 
+  if (processingDocuments.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        No documents are currently being processed
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <Progress
-        value={
-          status
-            ? (steps.findIndex((s) => s.id === status.currentStep) + 1) * 25
-            : 0
-        }
-      />
+      <div className="flex items-center gap-4">
+        <Progress
+          value={
+            status
+              ? status.currentStep === "error"
+                ? 100
+                : status.progress
+              : 0
+          }
+        />
+        <span className="text-sm font-medium">
+          {status?.progress || 0}%
+        </span>
+      </div>
 
       <div className="grid gap-4">
         {steps.map((step) => {
