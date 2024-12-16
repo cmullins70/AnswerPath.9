@@ -21,8 +21,21 @@ export function ProcessingStatus() {
   const { data: status, isLoading: isLoadingStatus } = useQuery<ProcessingStatusType>({
     queryKey: ["/api/processing/status", processingDocuments[0]?.id],
     enabled: processingDocuments.length > 0,
-    refetchInterval: processingDocuments.length > 0 ? 1000 : false, // Poll every second while processing
+    refetchInterval: (data) => {
+      // Keep polling until processing is complete
+      if (data?.currentStep === "complete" || data?.currentStep === "error") {
+        return false;
+      }
+      return 1000; // Poll every second while processing
+    },
   });
+
+  // Log status updates for debugging
+  React.useEffect(() => {
+    if (status) {
+      console.log("Processing status update:", status);
+    }
+  }, [status]);
 
   if (isLoadingDocuments || isLoadingStatus) {
     return (

@@ -141,31 +141,28 @@ async function processDocument(documentId: number, file: Express.Multer.File) {
   try {
     console.log(`Starting processing for document ${documentId}`);
     
-    // Initialize processing status
+    // Update initial status
     processingStatus.set(documentId, {
       currentStep: "preparation",
       completedSteps: [],
       progress: 0
     });
 
-    // Update status to extraction
-    setTimeout(() => {
-      processingStatus.set(documentId, {
-        currentStep: "extraction",
-        completedSteps: ["preparation"],
-        progress: 25
-      });
-    }, 1000);
-
     // Process the document
     console.log("Extracting document content...");
+    processingStatus.set(documentId, {
+      currentStep: "extraction",
+      completedSteps: ["preparation"],
+      progress: 25
+    });
+    
     const docs = await processor.processDocument(file);
     console.log(`Extracted ${docs.length} document chunks`);
 
-    // Update status to questions
+    // Update status for question extraction
     processingStatus.set(documentId, {
       currentStep: "questions",
-      completedSteps: ["extraction"],
+      completedSteps: ["preparation", "extraction"],
       progress: 50
     });
 
