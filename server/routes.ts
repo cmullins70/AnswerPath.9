@@ -45,7 +45,12 @@ export function registerRoutes(app: Express) {
           }).returning();
 
           // Process document in background
-          processDocument(doc.id, file).catch(console.error);
+          processDocument(doc.id, file).catch((error) => {
+            console.error(`Error processing document ${doc.id}:`, error);
+            if (error instanceof Error) {
+              console.error("Full error details:", error.message, error.stack);
+            }
+          });
 
           return doc;
         })

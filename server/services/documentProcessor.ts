@@ -33,66 +33,99 @@ export class DocumentProcessor {
     }
 
     try {
+      console.log("Initializing OpenAI services...");
+      
       this.openai = new ChatOpenAI({
         modelName: "gpt-3.5-turbo",
         temperature: 0,
-        maxTokens: 2000
+        maxTokens: 2000,
+        openAIApiKey: process.env.OPENAI_API_KEY,
       });
 
       this.embeddings = new OpenAIEmbeddings({
         modelName: "text-embedding-ada-002",
-        stripNewLines: true
+        stripNewLines: true,
+        openAIApiKey: process.env.OPENAI_API_KEY,
       });
+      
+      console.log("Successfully initialized OpenAI services");
     } catch (error) {
       console.error("Failed to initialize OpenAI services:", error);
+      if (error instanceof Error) {
+        console.error("Error details:", error.message, error.stack);
+      }
       throw new Error("Failed to initialize AI services. Please check your API key configuration.");
     }
   }
 
   async processDocument(file: Express.Multer.File): Promise<Document[]> {
+    console.log(`Starting to process document: ${file.originalname} (${file.mimetype})`);
+    
     const tempDir = path.join(process.cwd(), "temp");
     await fs.mkdir(tempDir, { recursive: true });
     const tempFilePath = path.join(tempDir, file.originalname);
     
     try {
+      console.log("Writing file to temporary location...");
       await fs.writeFile(tempFilePath, file.buffer);
       let docs: Document[] = [];
 
+      console.log("Extracting content based on file type...");
       switch (file.mimetype) {
         case "application/pdf":
+          console.log("Processing PDF document...");
           const pdfLoader = new PDFLoader(tempFilePath);
           docs = await pdfLoader.load();
+          console.log(`Extracted ${docs.length} pages from PDF`);
           break;
 
         case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         case "application/msword":
+          console.log("Processing Word document...");
           const docxResult = await mammoth.extractRawText({ path: tempFilePath });
           docs = [new Document({ pageContent: docxResult.value })];
+          console.log("Successfully extracted Word document content");
           break;
 
         case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
         case "application/vnd.ms-excel":
+          console.log("Processing Excel document...");
           const workbook = XLSX.read(await fs.readFile(tempFilePath));
           const csvContent = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
           const loader = new CSVLoader(new Blob([csvContent]));
           docs = await loader.load();
+          console.log("Successfully converted Excel to text content");
           break;
 
         default:
           throw new Error(`Unsupported file type: ${file.mimetype}`);
       }
 
+      console.log("Splitting document into manageable chunks...");
       const textSplitter = new RecursiveCharacterTextSplitter({
         chunkSize: 1000,
         chunkOverlap: 200,
       });
 
       const splitDocs = await textSplitter.splitDocuments(docs);
+      console.log(`Split into ${splitDocs.length} chunks`);
+
+      console.log("Creating vector store from documents...");
       this.vectorStore = await MemoryVectorStore.fromDocuments(splitDocs, this.embeddings);
+      console.log("Successfully created vector store");
 
       return splitDocs;
+    } catch (error) {
+      console.error("Error processing document:", error);
+      if (error instanceof Error) {
+        console.error("Error details:", error.message, error.stack);
+      }
+      throw error;
     } finally {
-      await fs.unlink(tempFilePath).catch(() => {});
+      console.log("Cleaning up temporary files...");
+      await fs.unlink(tempFilePath).catch((error) => {
+        console.error("Error deleting temporary file:", error);
+      });
     }
   }
 
