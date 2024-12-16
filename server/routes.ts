@@ -151,8 +151,20 @@ export function registerRoutes(app: Express) {
 
   app.get("/api/questions/export", async (_req, res) => {
     try {
-      const allQuestions = await db.select().from(questions);
+      const allQuestions = await db.select({
+        id: questions.id,
+        text: questions.text,
+        type: questions.type,
+        confidence: questions.confidence,
+        answer: questions.answer,
+        sourceDocument: questions.sourceDocument,
+      }).from(questions);
+      
       console.log("Retrieved questions for export:", allQuestions);
+      
+      if (!Array.isArray(allQuestions)) {
+        throw new Error("Failed to retrieve questions from database");
+      }
       
       // Convert to CSV format
       const csvRows = [
@@ -189,7 +201,7 @@ export function registerRoutes(app: Express) {
     } catch (error) {
       console.error("Failed to export questions:", error);
       if (error instanceof Error) {
-        console.error("Error details:", error.message, error.stack);
+        console.error("Full error details:", error.message, error.stack);
       }
       res.status(500).json({ error: "Failed to export questions" });
     }
