@@ -6,6 +6,7 @@ import { documents, questions } from "@db/schema";
 import { eq, sql } from "drizzle-orm";
 import { DocumentProcessor } from "./services/documentProcessor";
 import { WebScraper } from "./services/webScraper";
+import { EmbeddingsService } from './services/embeddings';
 import { contexts } from "@db/schema";
 
 const upload = multer({
@@ -27,6 +28,7 @@ const upload = multer({
 
 const processor = new DocumentProcessor();
 const webScraper = new WebScraper();
+const embeddingsService = new EmbeddingsService();
 const processingStatus = new Map<number, {
   currentStep: string;
   completedSteps: string[];
@@ -164,15 +166,31 @@ export function registerRoutes(app: Express) {
 
   app.post("/api/contexts", async (req, res) => {
     try {
-      const [context] = await db.insert(contexts).values({
-        title: req.body.title,
-        content: req.body.content,
-        type: req.body.type,
-        metadata: {},
-      }).returning();
-      res.json(context);
+      const { title, content, type } = req.body;
+      
+      // Insert the context
+      const [newContext] = await db.insert(contexts)
+        .values({ title, content, type })
+        .returning();
+
+      // Generate and store embeddings for the content
+      const sentences = content.split(/[.!?]+/).filter(Boolean).map(s => s.trim());
+      
+      // Process potential questions (sentences ending with ?)
+      const questions = sentences.filter(s => s.endsWith('?'));
+      for (const question of questions) {
+        await embeddingsService.storeQuestionEmbedding(newContext.id, question);
+      }
+      
+      // Process potential answers (sentences not ending with ?)
+      const answers = sentences.filter(s => !s.endsWith('?'));
+      for (const answer of answers) {
+        await embeddingsService.storeAnswerEmbedding(newContext.id, answer);
+      }
+
+      res.json(newContext);
     } catch (error) {
-      console.error("Failed to create context:", error);
+      console.error("Error creating context:", error);
       res.status(500).json({ error: "Failed to create context" });
     }
   });
@@ -183,10 +201,16 @@ export function registerRoutes(app: Express) {
       if (isNaN(id)) {
         return res.status(400).json({ error: "Invalid context ID" });
       }
+
+      // Delete embeddings first
+      await embeddingsService.deleteContextEmbeddings(id);
+
+      // Then delete the context
       await db.delete(contexts).where(eq(contexts.id, id));
+      
       res.json({ success: true });
     } catch (error) {
-      console.error("Failed to delete context:", error);
+      console.error("Error deleting context:", error);
       res.status(500).json({ error: "Failed to delete context" });
     }
   });
@@ -277,8 +301,6 @@ export function registerRoutes(app: Express) {
       });
     }
   });
-  
-
 
   app.get("/api/questions/export", async (_req, res) => {
     console.log("Starting CSV export of all questions");
@@ -383,6 +405,30 @@ export function registerRoutes(app: Express) {
         error: "Failed to fetch document questions",
         details: error instanceof Error ? error.message : "Unknown error"
       });
+    }
+  });
+
+  app.post("/api/search/similar", async (req, res) => {
+    try {
+      const { query, type = 'both', limit = 5 } = req.body;
+      
+      const results: {
+        questions?: Array<{ questionText: string; similarity: number }>;
+        answers?: Array<{ answerText: string; similarity: number }>;
+      } = {};
+
+      if (type === 'questions' || type === 'both') {
+        results.questions = await embeddingsService.findSimilarQuestions(query, limit);
+      }
+
+      if (type === 'answers' || type === 'both') {
+        results.answers = await embeddingsService.findSimilarAnswers(query, limit);
+      }
+
+      res.json(results);
+    } catch (error) {
+      console.error("Error searching similar content:", error);
+      res.status(500).json({ error: "Failed to search similar content" });
     }
   });
 
